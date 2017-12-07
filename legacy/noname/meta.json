@@ -1,0 +1,154 @@
+{
+  "./CXEMA.PNG": {
+    "ctime": "2010-09-22T17:42:22.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-09-22T17:42:22.000000Z",
+    "sha256sum": "0d7610e9d3eefd28bcd76f6728f7688642ce7ffc1de627951f09e7d2eb736eea",
+    "size": 14498,
+    "type": "file"
+  },
+  "./help_gui.txt": {
+    "ctime": "2010-06-09T18:53:40.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-06-09T18:53:40.000000Z",
+    "sha256sum": "fbd8ec6af007741f7610e3f1e710338e3d034438b9362655cf7506ae7845f245",
+    "size": 4186,
+    "type": "file"
+  },
+  "./src": {
+    "ctime": "2017-11-20T13:35:17.356241Z",
+    "mode": "rwxrwx---",
+    "mtime": "2017-11-20T13:35:17.356241Z",
+    "type": "directory"
+  },
+  "./src/account.java": {
+    "ctime": "2010-07-25T18:21:54.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-25T18:21:54.000000Z",
+    "sha256sum": "f5304a4e5c8223711611cbd9c1d5eef8ac9aecae682facb324026edc55abc711",
+    "size": 867,
+    "type": "file"
+  },
+  "./src/gui": {
+    "ctime": "2010-07-22T15:31:26.000000Z",
+    "mode": "rwx------",
+    "mtime": "2010-07-22T15:31:26.000000Z",
+    "type": "directory"
+  },
+  "./src/gui/GuiListener.java": {
+    "ctime": "2010-05-30T18:28:06.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-05-30T18:28:06.000000Z",
+    "sha256sum": "2b620043073e91de1c8fc34d57043da4d74bfddb0166cfbddb228251818b6d52",
+    "size": 339,
+    "type": "file"
+  },
+  "./src/gui/console.java": {
+    "ctime": "2010-07-22T18:23:32.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-22T18:23:32.000000Z",
+    "sha256sum": "65d127ce2de17573488bf41c74efbe7cfa176a3bb3ae14145ffe7d879939c025",
+    "size": 3013,
+    "type": "file"
+  },
+  "./src/gui/gui.java": {
+    "ctime": "2010-07-22T15:33:02.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-22T15:33:02.000000Z",
+    "sha256sum": "9b6d9b7021e7cafa009989aa0d37c5e18ec01eb4d3616e85c20d56137ce0f7e3",
+    "size": 1115,
+    "type": "file"
+  },
+  "./src/kernel.java": {
+    "ctime": "2010-08-01T17:13:38.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-08-01T17:13:38.000000Z",
+    "sha256sum": "11d2d433662dc15fde105c641f794ffc4279a6b046141c09068a97e4d07f9b05",
+    "size": 19545,
+    "type": "file"
+  },
+  "./src/net": {
+    "ctime": "2010-07-25T16:21:14.000000Z",
+    "mode": "rwx------",
+    "mtime": "2010-07-25T16:21:14.000000Z",
+    "type": "directory"
+  },
+  "./src/net/Jxa.java": {
+    "ctime": "2010-08-01T17:35:52.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-08-01T17:35:52.000000Z",
+    "sha256sum": "945c2021c9c991b1ef23dbcd7f87700b012992ba1df2a21f30de99146bdd38a2",
+    "size": 32514,
+    "type": "file"
+  },
+  "./src/net/MD5.java": {
+    "ctime": "2010-07-23T14:49:06.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-23T14:49:06.000000Z",
+    "sha256sum": "9b2d142bcbb4b2c7cf4310272b83c8e0ca417a209242de29b9c9e57f554eb4d9",
+    "size": 12375,
+    "type": "file"
+  },
+  "./src/net/ModuleListener.java": {
+    "ctime": "2010-07-30T19:30:44.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-30T19:30:44.000000Z",
+    "sha256sum": "fda9d2289d033fcfc9177a3fd15fc5ee5196b49bae8df030f9de7ac8f56e9a79",
+    "size": 408,
+    "type": "file"
+  },
+  "./src/net/Util.java": {
+    "ctime": "2010-07-23T14:54:00.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-23T14:54:00.000000Z",
+    "sha256sum": "d1c12109e19f8b81cbf34525b722890b44fd949662f2fdfbef5649c84d31a1af",
+    "size": 6857,
+    "type": "file"
+  },
+  "./src/net/XmlReader.java": {
+    "ctime": "2010-07-23T08:40:08.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-23T08:40:08.000000Z",
+    "sha256sum": "2d17d3e79e851477302fa2a0c6b6e921420f4ce97554b5e8679be4c2871c73e5",
+    "size": 4624,
+    "type": "file"
+  },
+  "./src/net/XmlWriter.java": {
+    "ctime": "2010-07-22T17:13:56.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-22T17:13:56.000000Z",
+    "sha256sum": "b70c5b94601ae0b8659349b8ca53a438c8ee37ccd7d092ef89916c9bbd69e2b9",
+    "size": 2353,
+    "type": "file"
+  },
+  "./src/net/XmppListener.java": {
+    "ctime": "2010-07-31T15:16:08.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-31T15:16:08.000000Z",
+    "sha256sum": "e735c43025ad6a396244231b15a64663aed581baf707d0e013cedfdf719297ba",
+    "size": 2578,
+    "type": "file"
+  },
+  "./src/net/module.java": {
+    "ctime": "2010-07-31T16:25:42.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-07-31T16:25:42.000000Z",
+    "sha256sum": "7a57b8ef46122d7d620e5b55a477e5a96c488553774e7af6130bc49ffacbe121",
+    "size": 720,
+    "type": "file"
+  },
+  "./src/net/modules": {
+    "ctime": "2010-08-01T13:33:20.000000Z",
+    "mode": "rwx------",
+    "mtime": "2010-08-01T13:33:20.000000Z",
+    "type": "directory"
+  },
+  "./src/net/modules/clientinfo.java": {
+    "ctime": "2010-08-01T17:09:30.000000Z",
+    "mode": "rw-rw----",
+    "mtime": "2010-08-01T17:09:30.000000Z",
+    "sha256sum": "0d1f2aadd57a2f95240361e9bd2c812f5b91b663cacd943998fca7cd324b4bdd",
+    "size": 8856,
+    "type": "file"
+  }
+}

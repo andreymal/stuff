@@ -1,0 +1,30 @@
+abindiff 001
+1-mtime: 2017-11-30T19:18:19.146837Z
+2-mtime: 2017-11-30T19:20:36.650682Z
+1-mode: rw-rw----
+2-mode: rw-rw----
+1-sha256sum: 4795a1c2517089e4df569afd77c04e949139cf299c87f012b894fccf91df4594
+2-sha256sum: dc4d8352e3da3129e1c85cb41ffdce1e2a307f308af9d3e1c770d80c5944e01f
+
+= 3
+
+- 3
+
+456
+
++ 3
+
+qqq
+
+= 4
+
+- 1
+
+
+
+
++ 5
+
+abcd
+
+

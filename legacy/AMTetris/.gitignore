@@ -1,0 +1,9 @@
+nbproject/private/
+nbproject/build-impl.xml
+nbproject/genfiles.properties
+build/
+dist/
+nbactions.xml
+nb-configuration.xml
+*.class
+*.jar

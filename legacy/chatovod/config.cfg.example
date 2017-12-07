@@ -1,0 +1,5 @@
+host=example.org
+server=example.org
+transport_host=chatovod.example.org
+port=20000
+password=secret

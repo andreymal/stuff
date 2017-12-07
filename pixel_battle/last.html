@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Pixel Battle True Status</title>
+<style>
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #505050;
+    font-family: Arial, Ubuntu, Sans-serif;
+}
+
+.panzoom-wrap {
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+}
+
+#pixelimg {
+    image-rendering: optimizeSpeed;             /* STOP SMOOTHING, GIVE ME SPEED  */
+    image-rendering: -moz-crisp-edges;          /* Firefox                        */
+    image-rendering: -o-crisp-edges;            /* Opera                          */
+    image-rendering: -webkit-optimize-contrast; /* Chrome (and eventually Safari) */
+    image-rendering: pixelated; /* Chrome */
+    image-rendering: optimize-contrast;         /* CSS3 Proposed                  */
+    -ms-interpolation-mode: nearest-neighbor;   /* IE8+    */
+}
+
+#date {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    font-weight: bold;
+    font-size: 16px;
+    padding: 4px;
+    height: 24px;
+    line-height: 24px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+}
+
+.autoupdate-wrap {
+    position: fixed;
+    left: 0;
+    bottom: 32px;
+    height: 24px;
+    line-height: 24px;
+    display: inline-block;
+    background: rgba(0, 0, 0, 0.5);
+    color: white;
+}
+
+.forcebtn-wrap {
+    position: fixed;
+    left: 0;
+    bottom: 56px;
+}
+
+</style>
+</head>
+<body>
+
+<div class="panzoom-wrap">
+<div class="panzoom">
+    <img id="pixelimg" src="https://home.andreymal.org/files/pixel_battle/img/last.png" width="1590" height="400" />
+</div>
+</div>
+<div id="date">Loading...</div>
+<label class="autoupdate-wrap">
+    <input type="checkbox" id="autoupdate" checked autocomplete="off" /> Autoupdate
+</label>
+<div class="forcebtn-wrap">
+    <button id="updbtn" onclick="requestUpdate();">Update</button>
+    <button id="forcebtn" onclick="forcereload();">Force load 1.bmp</button>
+</div>
+
+<script src="last_js/es6-promise.min.js"></script>
+<script src="last_js/fetch.min.js"></script>
+<script src="last_js/jquery.min.js"></script>
+<script src="last_js/jquery.mousewheel.js"></script>
+<script src="last_js/jquery.panzoom.js"></script>
+
+<script>
+'use strict';
+
+var oldSrc = null;
+var bmpnow = false;
+var scale = 0;
+var scales = [1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32];
+
+function configurePanZoom() {
+    var $panzoom = $('.panzoom').panzoom({
+        minScale: 1.0,
+        maxScale: 36,
+        linearZoom: true
+    });
+    $panzoom.parent().on('mousewheel.focal', function(e) {
+        e.preventDefault();
+        var delta = e.delta || e.originalEvent.wheelDelta;
+
+        var zoomOut = delta ? delta < 0 : e.originalEvent.deltaY > 0;
+        if (zoomOut) {
+            scale--;
+        } else {
+            scale++;
+        }
+
+        if (scale < 0) {
+            scale = 0;
+        } else if (scale >= scales.length) {
+            scale = scales.length - 1;
+        }
+
+        $panzoom.panzoom('zoom', scales[scale], {
+            animate: false,
+            focal: e
+        });
+    });
+}
+
+
+function configureAutoupdate() {
+    setInterval(function() {
+        if (document.getElementById('autoupdate').checked) {
+            requestUpdate();
+        }
+    }, 2500);
+}
+
+function requestUpdate() {
+    document.getElementById('updbtn').disabled = true;
+    fetch('https://home.andreymal.org/files/pixel_battle/img/last.json').then(function(response) {
+        return response.json();
+    }).then(function(data) {
+        document.getElementById('updbtn').disabled = false;
+        update(data);
+    }).then(null, function(e) {
+        document.getElementById('updbtn').disabled = false;
+        console.error(e);
+    });
+}
+
+function update(data) {
+    var pixelimg = document.getElementById('pixelimg');
+    var date = document.getElementById('date');
+
+    var src = 'https://home.andreymal.org/files/pixel_battle/img/' + data.last;
+    if (src !== oldSrc) {
+        oldSrc = src;
+        date.textContent = 'Loading...';
+
+        if (bmpnow) {
+            bmpnow = false;
+            pixelimg.style.opacity = '';
+        }
+
+        var imgonload = function() {
+            pixelimg.onload = null;
+            date.textContent = data.tm;
+            document.getElementById('forcebtn').style.display = '';
+        };
+
+        pixelimg.onload = imgonload;
+        pixelimg.src = src;
+    }
+}
+
+
+function forcereload() {
+    var pixelimg = document.getElementById('pixelimg');
+    var date = document.getElementById('date');
+    var label = '1.bmp at ' + new Date().toISOString();
+
+    var imgonload = function() {
+        if (!bmpnow) {
+            return;
+        }
+        pixelimg.style.opacity = '';
+        pixelimg.onload = null;
+        date.textContent = label;
+    };
+
+    pixelimg.onload = imgonload;
+
+    pixelimg.src = 'http://pixel.vkforms.ru/data/1.bmp?rnd=' + Math.random();
+    date.textContent = 'Loading ' + label + '...';
+    pixelimg.style.opacity = '0.8';
+    bmpnow = true;
+}
+
+
+window.onload = function() {
+    configurePanZoom();
+    configureAutoupdate();
+    requestUpdate();
+};
+
+</script>
+
+</body>
+</html>

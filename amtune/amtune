@@ -1,0 +1,477 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+import json
+import time
+import argparse
+import traceback
+from urllib.request import Request, urlopen, quote
+
+
+config = {
+    'interval': 15,
+    'interval_offset': 0.05,
+    'user_agent': None,
+    'download_timeout': 15,
+    'inputs': {},
+    'processors': {},
+    'outputs': [],
+}
+
+
+default_headers = {
+    'Accept': '*/*',
+    'Accept-Language': 'ru,en-US;q=0.8,en;q=0.5,de;q=0.3',
+    'Connection': 'close',
+}
+
+
+inputs = []
+inputs_dict = {}
+processors = []
+outputs = []
+
+last_track = None
+
+
+# Инпуты
+
+
+class TuneInput:
+    priority = 50
+
+    def __init__(self, **kwargs):
+        self._last = None
+
+    def grab(self):
+        return None
+
+    def get_last(self):
+        return dict(self._last) if self._last is not None else None
+
+    def get_cached_track(self):
+        return None
+
+
+class DeadbeefInput(TuneInput):
+    priority = 40
+
+    def __init__(self, deadbeef_cmd='deadbeef'):
+        super().__init__()
+        self.deadbeef_cmd = deadbeef_cmd
+
+    def grab(self):
+        data = os.popen(self.deadbeef_cmd + " --nowplaying-tf '%artist% :::::::: %title%' 2>/dev/null").read().strip()
+        if not data or data.count(' :::::::: ') != 1:
+            self._last = None
+            return None
+
+        artist, title = data.split(' :::::::: ', 1)
+        if not artist.strip() or not title.strip():
+            self._last = None
+            return None
+
+        self._last = {
+            'artist': artist.strip(),
+            'title': title.strip(),
+            'src': 'deadbeef',
+        }
+
+        return dict(self._last)
+
+
+class LastfmInput(TuneInput):
+    def __init__(self, username, cache_timeout=120):
+        import lxml.html  # pylint: disable=unused-variable; just test requirements
+        super().__init__()
+        self.username = username
+        self.cache_timeout = max(0.0, float(cache_timeout))
+        self._cache = None
+
+    def grab(self):
+        import lxml.html
+        import lxml.etree
+
+        data = download(
+            'https://www.last.fm/user/{}/partial/recenttracks?ajax=1'.format(quote(self.username)),
+            {'Referer': 'https://www.last.fm/user/{}'.format(quote(self.username))}
+        )
+
+        data = data.decode('utf-8', 'replace')
+
+        node = lxml.html.fragments_fromstring(data)[0]
+        now = node.xpath('//tr[contains(@class, "now-scrobbling")]')
+        if not now:
+            self._last = None
+            return None
+
+        now = now[0]
+
+        # <a> — ссылка на трек есть
+        # <span> — ссылки на трек нет
+        # Не знаю, почему иногда не бывает ссылок
+
+        artist = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "chartlist-artists")]/a')
+        if not artist:
+            artist = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "chartlist-artists")]/span')
+        title = now.xpath('td[contains(@class, "chartlist-name")]/span/a')
+        if not title:
+            title = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "link-block-target")]')
+
+        youtube = now.xpath('td[contains(@class, "chartlist-play")]/a')
+        youtube = youtube[0].get('data-youtube-id') if youtube else None
+
+        self._last = {
+            'artist': artist[0].text.strip(),
+            'title': title[0].text.strip(),
+            'src': 'lastfm',
+            'youtube': youtube,
+        }
+        self._cache = (time.time(), dict(self._last))
+        return dict(self._last)
+
+    def get_cached_track(self):
+        if not self._cache or time.time() - self._cache[0] > self.cache_timeout:
+            self._cache = None
+            return
+        return self._cache[1]
+
+
+# Дополнительные обработчики
+
+
+class TuneProcessor:
+    priority = 50
+
+    def __init__(self, **kwargs):
+        pass
+
+    def process(self, track):
+        return {}
+
+
+class YouTubeProcessor(TuneProcessor):
+    def __init__(self, saving_image_path=None):
+        super().__init__()
+        self.saving_image_path = saving_image_path
+
+    def process(self, track):
+        if not self.saving_image_path or not track.get('youtube'):
+            return {}
+
+        # Если есть ютуб у ластфма, то в качестве иконки для уведомляшки берём картинку оттуда
+        image_url = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'.format(track['youtube'])
+        image_data = None
+        for _ in range(3):
+            try:
+                image_data = download(image_url)
+                break
+            except IOError:
+                time.sleep(0.3)
+
+        if image_data:
+            with open(self.saving_image_path, 'wb') as fp:
+                fp.write(image_data)
+            image_path = self.saving_image_path
+        else:
+            image_path = None
+
+        return {'image_path': image_path} if image_path else {}
+
+
+# Оутпуты
+
+
+class TuneOutput:
+    priority = 50
+
+    def __init__(self, **kwargs):
+        pass
+
+    def write(self, track):
+        pass
+
+
+class FileOutput(TuneOutput):
+    def __init__(self, path, data, emptydata='', imgdata=None, default_image_path=None, encoding='utf-8', ignoresrc=None, ignored_as_empty=False):
+        super().__init__()
+        self.path = path
+        self.data = data
+        self.emptydata = emptydata
+        self.imgdata = imgdata
+        self.default_image_path = default_image_path
+        self.encoding = encoding
+        self.ignoresrc = ignoresrc or []
+        self.ignored_as_empty = ignored_as_empty
+
+    def write(self, track):
+        if track and track['src'] in self.ignoresrc:
+            if not self.ignored_as_empty:
+                return
+            track = None
+
+        kwargs = {}
+
+        # Собираем инфу
+        if track:
+            kwargs['artist'] = track['artist']
+            kwargs['title'] = track['title']
+
+            image_path = track.get('image_path') or self.default_image_path
+            if image_path and self.imgdata is not None:
+                datafmt = self.imgdata
+                kwargs['image_path'] = image_path
+            else:
+                datafmt = self.data
+
+        else:
+            datafmt = self.emptydata
+
+        if datafmt is None:
+            return
+
+        # Экранируем
+        for k, v in list(kwargs.items()):
+            kwargs[k + '_eschtml'] = esc_html(v)
+            kwargs[k + '_esccmd'] = esc_cmd(v)
+            kwargs[k + '_esccmdhtml'] = esc_cmd(esc_html(v))  # Нужно для notify-send
+
+        data = datafmt.format(**kwargs)
+
+        with open(self.path, 'w', encoding=self.encoding) as fp:
+            fp.write(data)
+
+
+class CommandOutput(TuneOutput):
+    def __init__(self, cmd, emptycmd='', imgcmd=None, default_image_path=None, ignoresrc=None, ignored_as_empty=False):
+        super().__init__()
+        self.cmd = cmd
+        self.emptycmd = emptycmd
+        self.imgcmd = imgcmd
+        self.default_image_path = default_image_path
+        self.ignoresrc = ignoresrc or []
+        self.ignored_as_empty = ignored_as_empty
+
+    def write(self, track):
+        if track and track['src'] in self.ignoresrc:
+            if not self.ignored_as_empty:
+                return
+            track = None
+
+        kwargs = {}
+
+        # Собираем инфу
+        if track:
+            kwargs['artist'] = track['artist']
+            kwargs['title'] = track['title']
+
+            image_path = track.get('image_path') or self.default_image_path
+            if image_path and self.imgcmd is not None:
+                datafmt = self.imgcmd
+                kwargs['image_path'] = image_path
+            else:
+                datafmt = self.cmd
+
+        else:
+            datafmt = self.emptycmd
+
+        if datafmt is None:
+            return
+
+        # Экранируем
+        for k, v in list(kwargs.items()):
+            kwargs[k + '_eschtml'] = esc_html(v)
+            kwargs[k + '_esccmd'] = esc_cmd(v)
+            kwargs[k + '_esccmdhtml'] = esc_cmd(esc_html(v))  # Нужно для notify-send
+
+        # Готовим команду для выполнения
+        cmd = datafmt.format(**kwargs)
+
+        # И выполняем
+        if cmd and cmd.strip():
+            os.system(cmd)
+
+
+# Основная рабочая функция
+
+
+def process():
+    global last_track
+
+    print('[{}]'.format(time.strftime('%Y-%m-%d %H:%M:%S')), end=' ')
+    sys.stdout.flush()
+
+    # Берём трек из первого инпута, который имеется
+    track = None
+    for inp in inputs:
+        track = inp.grab()
+        if track:
+            break
+
+    # Если нет ничего, берём кэш, например, ластфма, чтобы показать хоть что-то
+    if not track:
+        for inp in inputs:
+            track = inp.get_cached_track()
+            if track:
+                break
+
+    if track and (not track['artist'] or not track['title']):
+        track = None
+
+    # Печатаем дебаг в консоль
+    if track:
+        print('{artist} - {title}'.format(**track), end='')
+    else:
+        print('[nothing]', end='')
+    sys.stdout.flush()
+
+    # Трек не изменился — ничего не делаем
+    if tunecmp(track, last_track):
+        print()
+        return
+    last_track = track
+
+    if track:
+        # Запускаем дополнительные обработчики, которые добавят какую-нибудь
+        # полезноту типа картинки с ютуба
+        for proc in processors:
+            track.update(proc.process(track.copy()))
+
+    # Оутпутим
+    for out in outputs:
+        out.write(track.copy() if track else None)
+
+    print()
+    sys.stdout.flush()
+
+
+# Утилиты
+
+
+def tunecmp(info1, info2):
+    '''Сравнивает artist и title у этих двух словарей. Возвращает True, если
+    совпадают.
+    '''
+
+    if bool(info1) != bool(info2):
+        return False
+
+    if not info1 and not info2:
+        return True
+
+    assert info1 and info2
+
+    return info1.get('artist') == info2.get('artist') and info1.get('title') == info2.get('title')
+
+
+def download(req, headers=None):
+    if isinstance(req, str):
+        req = Request(req)
+
+    ready_headers = default_headers.copy()
+    if config.get('user_agent'):
+        ready_headers['User-Agent'] = config['user_agent']
+    if headers:
+        ready_headers.update(headers)
+    for k, v in ready_headers.items():
+        req.add_header(k, v)
+
+    return urlopen(req, timeout=config['download_timeout']).read()
+
+
+def esc_cmd(s):
+    # Кавычек в начале и в конце нет, использовать примерно так:
+    # "'{}'".format(esc_cmd(foo))
+    return s.replace("'", "'\"'\"'").replace('\n', ' ')
+
+
+def esc_html(s):
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
+
+# Запускалка
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', default=os.path.expanduser('~/.amtunerc'), help='Path to configuration file (default ~/.amtunerc)')
+    args = parser.parse_args()
+
+    with open(args.config, 'r', encoding='utf-8-sig') as fp:
+        config.update(json.load(fp))
+
+    # Запускаем инпуты
+    if not config['inputs']:
+        raise ValueError('inputs are not set')
+
+    for typ, kwargs in config['inputs'].items():
+        if typ == 'deadbeef':
+            inp = DeadbeefInput(**kwargs)
+            inputs_dict['deadbeef'] = inp
+        elif typ == 'lastfm':
+            inp = LastfmInput(**kwargs)
+            inputs_dict['lastfm'] = inp
+        else:
+            raise TypeError('Unknown input: {!r}'.format(typ))
+        inputs.append(inp)
+
+    inputs.sort(key=lambda x: x.priority)
+
+    # Запускаем дополнительные обработчики
+    if config['processors']:
+        for typ, kwargs in config['processors'].items():
+            if typ == 'youtube':
+                inp = YouTubeProcessor(**kwargs)
+            else:
+                raise TypeError('Unknown processor: {!r}'.format(typ))
+            processors.append(inp)
+
+    processors.sort(key=lambda x: x.priority)
+
+    # Запускаем оутпуты
+    if not config['outputs']:
+        raise ValueError('outputs are not set')
+
+    outputs_cfg = config['outputs']
+    if isinstance(outputs_cfg, dict):
+        outputs_cfg = [[k, v] for k, v in outputs_cfg.items()]  # pylint: disable=E1101
+    for typ, kwargs in outputs_cfg:
+        if typ == 'file':
+            inp = FileOutput(**kwargs)
+        elif typ == 'command':
+            inp = CommandOutput(**kwargs)
+        else:
+            raise TypeError('Unknown output: {!r}'.format(typ))
+        outputs.append(inp)
+
+    outputs.sort(key=lambda x: x.priority)
+
+    # Проверяем корректность интервала между проверками
+    interval = float(config['interval'])
+    assert interval > 0.0
+    interval_offset = float(config['interval_offset'])
+
+    # И запускаем основной рабочий цикл
+    tm = (time.time() // interval) * interval + interval_offset
+
+    while True:
+        try:
+            process()
+        except Exception:
+            traceback.print_exc()
+
+        while tm <= time.time():
+            tm += interval
+
+        sleep_tm = tm - time.time()
+        try:
+            if sleep_tm > 0:
+                time.sleep(sleep_tm)
+        except (KeyboardInterrupt, SystemExit):
+            break
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -1,0 +1,8 @@
+MIDlet-1: noname, noname.png, kernel
+MIDlet-Jar-Size: 28573
+MIDlet-Jar-URL: noname.jar
+MIDlet-Name: noname Client
+MIDlet-Vendor: AndreyMal
+MIDlet-Version: 0.0.2
+MicroEdition-Configuration: CLDC-1.0
+MicroEdition-Profile: MIDP-2.0
