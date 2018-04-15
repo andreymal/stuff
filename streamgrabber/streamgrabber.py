@@ -69,6 +69,7 @@ class Handler(watchdog.events.FileSystemEventHandler):
 
         # Видимо, у предыдущего сегмента запись завершена, и его можно
         # обработать
+        file_to_process = None
         if last_files:
             file_to_process = last_files[-1]
         last_files.append(path)
@@ -242,9 +243,9 @@ def main():
         default=default_output_args,
     )
     parser.add_argument('-f', '--segment-format', help='segment format (default: mp4)', default='mp4')
-    parser.add_argument('-o', '--output', help='output datetime pattern (default: %%Y-%%m-%%d_%%H-%%M.mp4)', default='%Y-%m-%d_%H-%M-%S.mp4')
-    parser.add_argument('-t', '--duration', type=int, default=1200, help='segment duration in seconds (default: 1200; 10 min)')
-    parser.add_argument('-s', '--segments', type=int, default=12, help='save only last N segments (0 - save all) (default: 12; 2 hours)')
+    parser.add_argument('-o', '--output', help='output datetime pattern (default: %%Y-%%m-%%d_%%H-%%M-%%S.mp4)', default='%Y-%m-%d_%H-%M-%S.mp4')
+    parser.add_argument('-t', '--duration', type=int, default=1200, help='segment duration in seconds (default: 1200; 20 min)')
+    parser.add_argument('-s', '--segments', type=int, default=12, help='save only last N segments (0 - save all) (default: 12; 4 hours)')
     parser.add_argument('-c', '--ffmpeg-cmd', help='path to ffmpeg program (default: ffmpeg)', default='ffmpeg')
     parser.add_argument('-T', '--tmpfile', help='temporary json file where streamgrabber will store some cached information (e.g. last segments) (default: none)', default=None)
     parser.add_argument('-d', '--directory', help='directory where stream will be saved (default: current)', default='.')
