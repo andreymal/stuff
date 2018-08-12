@@ -1,0 +1,216 @@
+# Пример настроек считалки статистики Табуна
+
+# Основные настройки
+
+[stat]
+# Каталог, куда складывать статистику
+destination = "./stat"
+
+# Ограничение диапазона времени для постов и комментов. Рекомендуется задать
+# для большей консистентности результата и чтобы всякие OLEG778 не мешались.
+# На юзеров и блоги не влияет.
+min_date = 2011-08-11T00:00:00+04:00
+# max_date = 2018-08-12T00:00:00+03:00
+
+# Часовой пояс, который используется некоторыми обработчиками для определения
+# границы суток и для форматирования вывода.
+timezone = "Europe/Moscow"
+
+
+# Параметры источника данных
+
+[datasource]
+# Класс, который будет использоваться для получения данных
+# (двоеточие означает сокращение для tabun_stat.datasource)
+name = ":sqlite3.Sqlite3DataSource"
+# name = "tabun_stat.datasource.sqlite3.Sqlite3DataSource"
+path = "./demo.sqlite3"
+
+
+# Массив обработчиков. Все параметры, кроме name, передаются им
+# в __init__ как есть. Параметр name обозначает используемый класс.
+# (двоеточие означает сокращение для tabun_stat.processors)
+
+
+[[processors]]
+# Считает активность пользователей по дням, опираясь на посты и комменты.
+# Создаёт файлы:
+# - active_users.txt
+# - activity.csv
+name = ":activity.ActivityProcessor"
+# periods = [1, 7, 30]
+
+
+# Считает число пользоватлей, у которых день рождения в один и тот же день.
+# Создаёт файл:
+# - birthdays.csv
+[[processors]]
+name = ":birthdays.BirthdaysProcessor"
+
+
+# Считает частоту использования символов в постах и комментах.
+# Создаёт файл:
+# - chars.csv
+[[processors]]
+name = ":chars.CharsProcessor"
+
+
+# Считает, сколько постов делают в определённое время суток по часам.
+# Выводит статистику за всё время, по годам и за последние два месяца.
+# Создаёт файл:
+# - posts_counts_avg.csv
+[[processors]]
+name = ":posts_counts_avg.PostsCountsAvgProcessor"
+# Учитывать ли дни, когда Табун лежал и не было вообще никаких постов.
+# Это может несправедливо занизить статистику, поэтому по умолчанию
+# отключено
+# collect_empty_days = false
+
+
+# Аналогично для комментов.
+# Создаёт файл:
+# - comments_counts_avg.csv
+[[processors]]
+name = ":comments_counts_avg.CommentsCountsAvgProcessor"
+# collect_empty_days = false
+
+
+# Считает число постов по их рейтингу.
+# Создаёт файл:
+# - posts_ratings.csv
+[[processors]]
+name = ":posts_ratings.PostsRatingsProcessor"
+
+
+# Считает число комментов по их рейтингу.
+# Создаёт файл:
+# - comments_ratings.csv
+[[processors]]
+name = ":comments_ratings.CommentsRatingsProcessor"
+
+
+# Кто сколько кидал дайсы.
+# Создаёт файл:
+# - dices.csv
+[[processors]]
+name = ":dices.DicesProcessor"
+
+
+# Считает, кто больше всего написал постов и комментов. Считает две статистики
+# с учётом закрытых блога и без учёта, чтобы не сливать инфу из сверхсекретных
+# чат-блогов. Считает как за всё время, так и по годам.
+# Создаёт файлы:
+# - flooders_all.csv
+# - flooders_ГОД.csv
+# - flooders_public_all.csv
+# - flooders_public_ГОД.csv
+[[processors]]
+name = ":flooders.FloodersProcessor"
+
+# Собирает статистику использования картинок. Для ссылок считает две статистики
+# с учётом закрытых блогов и без учёта. Также считает статистику
+# по используемым хостам двумя способами: с полным сохранением поддоменов
+# (вроде blablabla.vk.me) и с обрезной до второго уровня (vk.me).
+# Создаёт файлы:
+# - images.csv
+# - images_hosts.csv
+# - images_hosts2.csv
+[[processors]]
+name = ":images.ImagesProcessor"
+
+
+# Считает частоту использования первых букв ников.
+# Создаёт файл:
+# - nicknames.csv
+[[processors]]
+name = ":nicknames.NicknamesProcessor"
+
+
+# Считает число зарегистрированных пользователей по дням. Также отдельно
+# считает число пользователей с рейтингом больше -20 и с рейтингом больше +20.
+[[processors]]
+name = ":registrations.RegistrationsProcessor"
+
+
+# Считает число пользователей по их рейтингу. Из-за того, что, в отличие
+# от постов, рейтинг не является целым числом разброс очень большой,
+# группирует рейтинг. Также отдельно считает число пользователей с ровно
+# нулевым рейтингом.
+# Создаёт файлы:
+# - users_ratings_ГРУППА.csv
+# - users_ratings_zero.txt
+[[processors]]
+name = ":users_ratings.UsersRatingsProcessor"
+# Диапазоны рейтингов, по сколько группировать
+# steps = [10, 100]
+
+
+# Считает статистику по используемым на Табуне словам. Cчитает две статистики
+# с учётом закрытых блогов и без учёта. Также отдельно считает статистику
+# без учёта ботов. Для статистики MineOzelot вставлен отдельный игнорирующий
+# костыль.
+# Создаёт файл:
+# - words.csv
+[[processors]]
+name = ":words.WordsProcessor"
+bot_ids = [15404, 35673, 42591]  # am31, lunabot, ozibot
+
+
+# Считает статистику по числу постов в разных блогах.
+# Создаёт файлы:
+# - posts_counts.csv (нормальный файл со статистикой)
+# - posts_counts_sum.csv (каждый следующий столбец сложен с предыдущим
+#   для упрощения рисования графиков)
+# - posts_counts_perc.csv (процеты тоже складываются как описано выше)
+[[processors]]
+name = ":posts_counts.PostsCountsProcessor"
+# Первый день периода, с которого начинать считать статистику
+first_day = 2011-08-08T00:00:00+04:00
+# Собственно сам период, по сколько дней группировать посты
+# period = 7
+
+categories = [
+    # closed,
+    {label = "Ролеплей",             blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
+    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},
+    {label = "Вишневый сад", blogs = ["c-h-e-r-r-y"]},
+    {label = "Другие чат-блоги",     blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
+    {label = "Сервис-зона",          blogs = ["service"]},
+    {label = "ТаБункер",             blogs = ["bunker"]},
+    {label = "Ночные врата",         blogs = ["no_tlen_allowed"]},
+    {label = "МПП",                  blogs = ["lighthouse", "librehouse"]},
+    {label = "Лавочка Дискорда",     blogs = ["ty_nyasha", "nyasha"]},
+    {label = "Маяк",                 blogs = ["Pharos"]},
+    {label = "Полуночники",          blogs = ["Ponyhawks"]},
+    # personal,
+    # open
+]
+
+
+# Аналогично для комментов.
+# Создаёт файлы:
+# - comments_counts.csv
+# - comments_counts_sum.csv
+# - comments_counts_perc.csv
+[[processors]]
+name = ":comments_counts.CommentsCountsProcessor"
+first_day = 2011-08-08T00:00:00+04:00
+# period = 7
+
+categories = [
+    # closed,
+    {label = "Ролеплей",             blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
+    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},v
+    {label = "Вишневый сад", blogs = ["c-h-e-r-r-y"]},
+    {label = "Другие чат-блоги",     blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
+    {label = "Сервис-зона",          blogs = ["service"]},
+    {label = "ТаБункер",             blogs = ["bunker"]},
+    {label = "Ночные врата",         blogs = ["no_tlen_allowed"]},
+    {label = "МПП",                  blogs = ["lighthouse", "librehouse"]},
+    {label = "Лавочка Дискорда",     blogs = ["ty_nyasha", "nyasha"]},
+    {label = "Маяк",                 blogs = ["Pharos"]},
+    {label = "Полуночники",          blogs = ["Ponyhawks"]},
+    # personal,
+    # open,
+    # all_by_id
+]
