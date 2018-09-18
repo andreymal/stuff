@@ -233,10 +233,11 @@ def apply_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None) -> d
 
     if tzinfo and isinstance(tzinfo, str):
         tzinfo = pytz.timezone(tzinfo)
-    assert isinstance(tzinfo, BaseTzInfo)
 
     if not tzinfo:
         tzinfo = pytz.timezone('UTC')
+    assert isinstance(tzinfo, BaseTzInfo)
+
     if not tm.tzinfo:
         tm = tzinfo.fromutc(tm)
     elif tm.tzinfo != tzinfo:
@@ -269,10 +270,11 @@ def set_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None, is_dst
 
     if tzinfo and isinstance(tzinfo, str):
         tzinfo = pytz.timezone(tzinfo)
-    assert isinstance(tzinfo, BaseTzInfo)
 
     if not tzinfo:
         tzinfo = pytz.timezone('UTC')
+    assert isinstance(tzinfo, BaseTzInfo)
+
     return tzinfo.localize(tm, is_dst=is_dst)
 
 

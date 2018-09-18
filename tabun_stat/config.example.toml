@@ -107,10 +107,11 @@ name = ":dices.DicesProcessor"
 [[processors]]
 name = ":flooders.FloodersProcessor"
 
+
 # Собирает статистику использования картинок. Для ссылок считает две статистики
 # с учётом закрытых блогов и без учёта. Также считает статистику
 # по используемым хостам двумя способами: с полным сохранением поддоменов
-# (вроде blablabla.vk.me) и с обрезной до второго уровня (vk.me).
+# (вроде blablabla.vk.me) и с обрезкой до второго уровня (vk.me).
 # Создаёт файлы:
 # - images.csv
 # - images_hosts.csv
@@ -200,7 +201,7 @@ first_day = 2011-08-08T00:00:00+04:00
 categories = [
     # closed,
     {label = "Ролеплей",             blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
-    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},v
+    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},
     {label = "Вишневый сад", blogs = ["c-h-e-r-r-y"]},
     {label = "Другие чат-блоги",     blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
     {label = "Сервис-зона",          blogs = ["service"]},
