@@ -1,10 +1,17 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 set -e
 
-./img2video_prepare.py
-./img2video_prepare.py
-ffmpeg -framerate 30 -i 'my/src/00%?%?%?%?%?%[037%]0.png' -c:v libx264 -preset veryslow -crf 0 my/timelapse_fast.mp4
-rm -f ./timelapse_fast.mp4
-qt-faststart my/timelapse_fast.mp4 ./timelapse_fast.mp4
-chmod a+r ./timelapse_fast.mp4
+NAME="timelapse_2018-10-10_fast"
+
+./img2video_prepare.py img my/src --extra 2018.json
+./img2video_prepare.py img my/src --extra 2018.json
+
+ffmpeg -hide_banner -loglevel error \
+    -r 300 -f concat -i my/src/concat.txt \
+    -vf fps=fps=30 \
+    -c:v libx264 -preset veryslow -crf 0 \
+    -f mp4 -movflags +faststart -y "my/$NAME.mp4"
+
+cp -Rpv "my/$NAME.mp4" "./$NAME.mp4"
+chmod a+r "./$NAME.mp4"

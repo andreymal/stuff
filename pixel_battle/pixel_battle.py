@@ -2,13 +2,15 @@
 # -*- coding: utf-8 -*-
 
 # pixel_battle grabber
-# copyright © 2017 andreymal
+# https://github.com/andreymal/stuff/tree/master/pixel_battle/
+# copyright © 2018 andreymal
 # License: MIT
 
 import os
 import sys
 import json
 import time
+import argparse
 import traceback
 from io import BytesIO
 from hashlib import sha256
@@ -16,6 +18,10 @@ from datetime import datetime
 from urllib.request import Request, urlopen
 
 from PIL import Image
+
+
+default_url = 'http://pixel.vkforms.ru/data/1.bmp'
+user_agent = 'Mozilla/5.0; pixel_battle/0.2 (grabber; https://home.andreymal.org/files/pixel_battle/; contact https://vk.com/andreymal if there are problems)'
 
 
 expected_palette_old = [  # палитра первой пиксельной войны (10.10.2017)
@@ -76,7 +82,7 @@ expected_palette = [  # палитра второй пиксельной вой�
 ]
 
 
-def get_sleep_time(interval=600):
+def get_sleep_time(interval=30):
     assert int(interval) == interval
     tm = time.time()
     tm_to = (int(tm) // interval + 1) * interval
@@ -120,7 +126,7 @@ def optimize_with_palette(im):
     return small_im
 
 
-def grab_to(dirname, filename=None, symlink_filename='last.png', json_filename='last.json'):
+def grab_to(url, dirname, filename=None, symlink_filename='last.png', json_filename='last.json', maxsize=5 * 1024 * 1024):
     # Генерируем имя сохраняемой картинки
     tm = datetime.utcnow()  # UTC
     if not filename:
@@ -138,9 +144,9 @@ def grab_to(dirname, filename=None, symlink_filename='last.png', json_filename='
         saveopts = {'format': 'BMP'}
 
     # Готовим HTTP-запрос
-    r = Request('http://pixel.vkforms.ru/data/1.bmp')
+    r = Request(url)
     r.add_header('Connection', 'close')
-    r.add_header('User-Agent', 'Mozilla/5.0; pixel_battle/0.1 (grabber; https://home.andreymal.org/files/pixel_battle/; contact https://vk.com/andreymal if there are problems)')
+    r.add_header('User-Agent', user_agent)
 
     print('grab...', end=' ')
     sys.stdout.flush()
@@ -149,7 +155,7 @@ def grab_to(dirname, filename=None, symlink_filename='last.png', json_filename='
     tries = 3
     for trynum in range(tries):
         try:
-            data = urlopen(r).read()
+            data = urlopen(r, timeout=10).read(maxsize + 1)
         except Exception as exc:
             print(exc, end=' ')
             sys.stdout.flush()
@@ -160,18 +166,24 @@ def grab_to(dirname, filename=None, symlink_filename='last.png', json_filename='
             break
         time.sleep(1.5)
 
+    if len(data) > maxsize:
+        print('(image size is too big, it will be truncated!)', end=' ', flush=True)
+        data = data[:maxsize]
+
     print('save...', end=' ')
     sys.stdout.flush()
 
     # Если формат не BMP (по умолчанию PNG), то конвертируем картинку в него
     if saveopts['format'] == 'PNG':
         # PNG пытаемся оптимизировать, используя фиксированную палитру
+        # (для 2018 отключено из-за слишком странной палитры)
         with Image.open(BytesIO(data)) as im:
-            newim = optimize_with_palette(im)
+            newim = im.copy()  # optimize_with_palette(im)
             data = BytesIO()
             newim.save(data, **saveopts)
             del newim
             data = data.getvalue()
+
     elif saveopts['format'] != 'BMP':
         with Image.open(BytesIO(data)) as im:
             data = BytesIO()
@@ -190,44 +202,63 @@ def grab_to(dirname, filename=None, symlink_filename='last.png', json_filename='
 
     # Пилим симлинк на последнюю доступную версию
     last_path = os.path.join(dirname, symlink_filename)
-    if os.path.exists(last_path):
+    if os.path.islink(last_path):
+        os.unlink(last_path)
+    elif os.path.exists(last_path):
         os.remove(last_path)
     os.symlink(os.path.join('.', filename), last_path)
 
     # Пилим ссылку на последнюю доступную версию (для удобства всяких аяксов)
     json_path = os.path.join(dirname, json_filename)
     with open(json_path, 'w', encoding='utf-8') as fp:
-        fp.write(json.dumps({'last': filename, 'tm': tm.strftime('%Y-%m-%dT%H:%M:%SZ'), 'sha256sum': sha256(data).hexdigest()}))
+        json.dump({
+            'last': filename,
+            'tm': tm.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'sha256sum': sha256(data).hexdigest(),
+        }, fp, sort_keys=True)
     os.chmod(json_path, 0o644)
 
     print('ok!')
 
 
 def main():
-    if len(sys.argv) != 2:
-        print('Usage: {} dir-to-save'.format(sys.argv[0]))
-        return 2
+    parser = argparse.ArgumentParser(description='Saves VK Pixel Battle status')
+    parser.add_argument('--url', help='image URL (default: {})'.format(default_url), default=default_url)
+    parser.add_argument('-S', '--maxsize', type=float, default=5.0, help='max image size in MiB (default: 5.0)')
+    parser.add_argument('-i', '--interval', type=float, default=30, help='interval between grabs in seconds (default: 30)')
+    parser.add_argument('directory', metavar='DIRECTORY', help='output directory')
 
-    dirname = os.path.abspath(sys.argv[1])
-    if not os.path.isdir(dirname):
-        os.mkdir(dirname)
+    args = parser.parse_args()
 
-    print('Sleeping {:.1f}s'.format(get_sleep_time()))
-    time.sleep(get_sleep_time() + 0.05)
+    interval = int(args.interval)
+
+    print(
+        time.strftime('[%Y-%m-%d %H:%M:%S]'),
+        'pixel_battle grabber started (interval: {}s, url: {})'.format(interval, args.url),
+    )
+
+    print(
+        time.strftime('[%Y-%m-%d %H:%M:%S]'),
+        'Sleeping {:.1f}s before first grab'.format(
+            get_sleep_time(interval=interval)
+        ),
+    )
+    time.sleep(get_sleep_time(interval=interval) + 0.05)
 
     try:
         while True:
             try:
                 print(time.strftime('[%Y-%m-%d %H:%M:%S]'), end=' ')
                 sys.stdout.flush()
-                grab_to(dirname)
+                grab_to(args.url, args.directory, maxsize=int(args.maxsize * 1024 * 1024))
             except Exception:
                 print(traceback.format_exc())
-            time.sleep(get_sleep_time() + 0.05)
+            time.sleep(get_sleep_time(interval=interval) + 0.05)
 
     except (KeyboardInterrupt, SystemExit):
         print()
 
+    print(time.strftime('[%Y-%m-%d %H:%M:%S]'), 'pixel_battle grabber stopped')
     return 0
 
 

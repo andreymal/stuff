@@ -192,6 +192,11 @@ function forcereload() {
 
 
 window.onload = function() {
+    if (window.location.toString().indexOf('http://') === 0 ){
+        window.location = 'https://' + window.location.toString().substring(7);
+        return;
+    }
+
     configurePanZoom();
     configureAutoupdate();
     requestUpdate();
