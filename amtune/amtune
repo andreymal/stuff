@@ -324,6 +324,40 @@ class AMTune:
 
         self.quit_event = Event()
 
+        self._listeners = {
+            'start': [],          # (amtune: AMTune)
+            'input_start': [],    # (amtune: AMTune)
+            'input': [],          # (amtune: AMTune, track: Optional[Dict[str, Any]], inp: TuneInput, get_cached: bool)
+            'input_end': [],      # (amtune: AMTune, track: Optional[Dict[str, Any]])
+            'process_start': [],  # (amtune: AMTune, track: Dict[str, Any])
+            'process': [],        # (amtune: AMTune, track: Dict[str, Any], proc: TuneProcessor)
+            'process_end': [],    # (amtune: AMTune, track: Dict[str, Any])
+            'output_start': [],   # (amtune: AMTune, track: Optional[Dict[str, Any]])
+            'output': [],         # (amtune: AMTune, track: Optional[Dict[str, Any]], out: TuneOutput)
+            'output_end': [],     # (amtune: AMTune, track: Optional[Dict[str, Any]])
+            'done': [],           # (amtune: AMTune, exc: Optional[Exception])
+        }
+
+    def subscribe(self, name, listener):
+        if name not in self._listeners:
+            raise ValueError('Unknown event type: {!r}'.format(name))
+        if listener not in self._listeners[name]:
+            self._listeners[name].append(listener)
+
+    def unsubscribe(self, name, listener):
+        if name not in self._listeners:
+            raise ValueError('Unknown event type: {!r}'.format(name))
+        if listener in self._listeners[name]:
+            self._listeners[name].remove(listener)
+
+    def _call(
+        self, name, args=None, kwargs=None
+    ):
+        args = args or ()
+        kwargs = kwargs or {}
+        for listener in self._listeners[name]:
+            listener(*args, **kwargs)
+
     def apply_config(self, config):
         if 'interval' in config:
             self.interval = float(config['interval'])
@@ -421,13 +455,15 @@ class AMTune:
     def sort_outputs(self):
         self.outputs.sort(key=lambda x: x.priority)
 
-    def process(self):
+    def _process(self):
         if self.verbosity > 0:
             print('[{}]'.format(time.strftime('%Y-%m-%d %H:%M:%S')), end=' ', flush=True)
 
         # Берём трек из первого инпута, который имеется
+        self._call('input_start', (self,))
         track = None
         for inp in self.inputs:
+            self._call('input', (self, track, inp, False))
             track = inp.grab(self)
             if track:
                 break
@@ -435,12 +471,15 @@ class AMTune:
         # Если нет ничего, берём кэш, например, ластфма, чтобы показать хоть что-то
         if not track:
             for inp in self.inputs:
+                self._call('input', (self, track, inp, True))
                 track = inp.get_cached_track(self)
                 if track:
                     break
 
         if track and (not track['artist'] or not track['title']):
             track = None
+
+        self._call('input_end', (self, track))
 
         # Печатаем дебаг в консоль
         if self.verbosity > 0:
@@ -454,20 +493,37 @@ class AMTune:
             if self.verbosity > 0:
                 print('', flush=True)
             return
-        self.last_track = track
 
         if track:
             # Запускаем дополнительные обработчики, которые добавят какую-нибудь
             # полезноту типа картинки с ютуба
+            self._call('process_start', (self, track))
             for proc in self.processors:
+                self._call('process', (self, track, proc))
                 track.update(proc.process(self, track.copy()))
+            self._call('process_end', (self, track))
 
         # Оутпутим
+        self._call('output_start', (self, track))
         for out in self.outputs:
+            self._call('output', (self, track, out))
             out.write(self, track.copy() if track else None)
+        self._call('output_end', (self, track))
+
+        self.last_track = track
 
         if self.verbosity > 0:
             print('', flush=True)
+
+    def process(self):
+        try:
+            self._call('start', (self,))
+            self._process()
+        except Exception as exc:
+            self._call('done', (self, exc))
+            raise
+        else:
+            self._call('done', (self, None))
 
     def stop(self):
         self.quit_event.set()
