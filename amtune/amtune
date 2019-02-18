@@ -1,39 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+# pylint: disable=too-many-instance-attributes
+
 import os
 import sys
 import json
 import time
+import shlex
+import shutil
 import argparse
 import traceback
-from urllib.request import Request, urlopen, quote
+from threading import Event
+from subprocess import Popen, PIPE, DEVNULL
+from urllib.request import Request, urlopen
+from urllib.parse import quote
 
 
-config = {
-    'interval': 15,
-    'interval_offset': 0.05,
-    'user_agent': None,
-    'download_timeout': 15,
-    'inputs': {},
-    'processors': {},
-    'outputs': [],
-}
-
-
-default_headers = {
-    'Accept': '*/*',
-    'Accept-Language': 'ru,en-US;q=0.8,en;q=0.5,de;q=0.3',
-    'Connection': 'close',
-}
-
-
-inputs = []
-inputs_dict = {}
-processors = []
-outputs = []
-
-last_track = None
+__version__ = '0.0.2'
 
 
 # Инпуты
@@ -45,13 +29,13 @@ class TuneInput:
     def __init__(self, **kwargs):
         self._last = None
 
-    def grab(self):
+    def grab(self, amtune):
         return None
 
-    def get_last(self):
+    def get_last(self, amtune):
         return dict(self._last) if self._last is not None else None
 
-    def get_cached_track(self):
+    def get_cached_track(self, amtune):
         return None
 
 
@@ -61,9 +45,15 @@ class DeadbeefInput(TuneInput):
     def __init__(self, deadbeef_cmd='deadbeef'):
         super().__init__()
         self.deadbeef_cmd = deadbeef_cmd
+        self.deadbeef_args = shlex.split(self.deadbeef_cmd)
+        self.deadbeef_args[0] = shutil.which(self.deadbeef_args[0]) or self.deadbeef_args[0]
 
-    def grab(self):
-        data = os.popen(self.deadbeef_cmd + " --nowplaying-tf '%artist% :::::::: %title%' 2>/dev/null").read().strip()
+    def grab(self, amtune):
+        player = Popen(self.deadbeef_args + [
+            '--nowplaying-tf',
+            '%artist% :::::::: %title%',
+        ], stdin=DEVNULL, stdout=PIPE, stderr=DEVNULL)
+        data = player.communicate()[0].decode('utf-8').strip()
         if not data or data.count(' :::::::: ') != 1:
             self._last = None
             return None
@@ -90,16 +80,16 @@ class LastfmInput(TuneInput):
         self.cache_timeout = max(0.0, float(cache_timeout))
         self._cache = None
 
-    def grab(self):
+    def grab(self, amtune):
         import lxml.html
         import lxml.etree
 
-        data = download(
+        bindata = amtune.download(
             'https://www.last.fm/user/{}/partial/recenttracks?ajax=1'.format(quote(self.username)),
             {'Referer': 'https://www.last.fm/user/{}'.format(quote(self.username))}
         )
 
-        data = data.decode('utf-8', 'replace')
+        data = bindata.decode('utf-8', 'replace')
 
         node = lxml.html.fragments_fromstring(data)[0]
         now = node.xpath('//tr[contains(@class, "now-scrobbling")]')
@@ -132,10 +122,10 @@ class LastfmInput(TuneInput):
         self._cache = (time.time(), dict(self._last))
         return dict(self._last)
 
-    def get_cached_track(self):
+    def get_cached_track(self, amtune):
         if not self._cache or time.time() - self._cache[0] > self.cache_timeout:
             self._cache = None
-            return
+            return None
         return self._cache[1]
 
 
@@ -148,7 +138,7 @@ class TuneProcessor:
     def __init__(self, **kwargs):
         pass
 
-    def process(self, track):
+    def process(self, amtune, track):
         return {}
 
 
@@ -157,7 +147,7 @@ class YouTubeProcessor(TuneProcessor):
         super().__init__()
         self.saving_image_path = saving_image_path
 
-    def process(self, track):
+    def process(self, amtune, track):
         if not self.saving_image_path or not track.get('youtube'):
             return {}
 
@@ -166,7 +156,7 @@ class YouTubeProcessor(TuneProcessor):
         image_data = None
         for _ in range(3):
             try:
-                image_data = download(image_url)
+                image_data = amtune.download(image_url)
                 break
             except IOError:
                 time.sleep(0.3)
@@ -190,7 +180,7 @@ class TuneOutput:
     def __init__(self, **kwargs):
         pass
 
-    def write(self, track):
+    def write(self, amtune, track):
         pass
 
 
@@ -206,7 +196,7 @@ class FileOutput(TuneOutput):
         self.ignoresrc = ignoresrc or []
         self.ignored_as_empty = ignored_as_empty
 
-    def write(self, track):
+    def write(self, amtune, track):
         if track and track['src'] in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
@@ -254,7 +244,7 @@ class CommandOutput(TuneOutput):
         self.ignoresrc = ignoresrc or []
         self.ignored_as_empty = ignored_as_empty
 
-    def write(self, track):
+    def write(self, amtune, track):
         if track and track['src'] in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
@@ -294,57 +284,227 @@ class CommandOutput(TuneOutput):
             os.system(cmd)
 
 
-# Основная рабочая функция
+# Основной класс
 
 
-def process():
-    global last_track
+class AMTune:
+    inputs_registry = {
+        'deadbeef': DeadbeefInput,
+        'lastfm': LastfmInput,
+    }
 
-    print('[{}]'.format(time.strftime('%Y-%m-%d %H:%M:%S')), end=' ')
-    sys.stdout.flush()
+    processors_registry = {
+        'youtube': YouTubeProcessor,
+    }
 
-    # Берём трек из первого инпута, который имеется
-    track = None
-    for inp in inputs:
-        track = inp.grab()
-        if track:
-            break
+    outputs_registry = {
+        'file': FileOutput,
+        'command': CommandOutput,
+    }
 
-    # Если нет ничего, берём кэш, например, ластфма, чтобы показать хоть что-то
-    if not track:
-        for inp in inputs:
-            track = inp.get_cached_track()
+    default_headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'ru,en-US;q=0.8,en;q=0.5,de;q=0.3',
+        'Connection': 'close',
+        'User-Agent': 'amtune/{}'.format(__version__),
+    }
+
+    def __init__(self, verbosity=0):
+        self.inputs = []
+        self.processors = []
+        self.outputs = []
+
+        self.interval = 15.0
+        self.interval_offset = 0.05
+        self.download_timeout = 15.0
+        self.user_agent = None
+
+        self.last_track = None
+        self.verbosity = int(verbosity)
+
+        self.quit_event = Event()
+
+    def apply_config(self, config):
+        if 'interval' in config:
+            self.interval = float(config['interval'])
+
+        if 'interval_offset' in config:
+            self.interval_offset = float(config['interval_offset'])
+
+        if 'download_timeout' in config:
+            self.download_timeout = float(config['download_timeout'])
+
+        if 'user_agent' in config:
+            self.user_agent = str(config['user_agent']) if config['user_agent'] else None
+
+        # Запускаем инпуты
+        if not config['inputs']:
+            raise ValueError('inputs are not set')
+
+        for typ, kwargs in config['inputs'].items():
+            if typ not in self.inputs_registry:
+                raise ValueError('Unknown input: {!r}'.format(typ))
+            inp = self.inputs_registry[typ](**kwargs)
+            self.add_input(inp)
+
+        self.sort_inputs()
+
+        # Запускаем дополнительные обработчики
+        if config['processors']:
+            for typ, kwargs in config['processors'].items():
+                if typ not in self.processors_registry:
+                    raise ValueError('Unknown processor: {!r}'.format(typ))
+                proc = self.processors_registry[typ](**kwargs)
+                self.add_processor(proc)
+
+        self.sort_processors()
+
+        # Запускаем оутпуты
+        if not config['outputs']:
+            raise ValueError('outputs are not set')
+
+        outputs_cfg = config['outputs']
+        if isinstance(outputs_cfg, dict):
+            outputs_cfg = [(k, v) for k, v in outputs_cfg.items()]
+
+        for typ, kwargs in outputs_cfg:
+            if typ not in self.outputs_registry:
+                raise ValueError('Unknown output: {!r}'.format(typ))
+            out = self.outputs_registry[typ](**kwargs)
+            self.add_output(out)
+
+        self.sort_outputs()
+
+    def read_config_file(self, path):
+        with open(path, 'r', encoding='utf-8-sig') as fp:
+            config = json.load(fp)
+        if not isinstance(config, dict):
+            raise TypeError('Config must be dict')
+        self.apply_config(config)
+
+    @classmethod
+    def register_input(cls, name, inp, force=False):
+        if not force and name in cls.inputs_registry:
+            raise ValueError('Input {!r} is already registered')
+        cls.inputs_registry[name] = inp
+
+    def add_input(self, inp):
+        if inp not in self.inputs:
+            self.inputs.append(inp)
+
+    def sort_inputs(self):
+        self.inputs.sort(key=lambda x: x.priority)
+
+    @classmethod
+    def register_processor(cls, name, proc, force=False):
+        if not force and name in cls.processors_registry:
+            raise ValueError('Processor {!r} is already registered')
+        cls.processors_registry[name] = proc
+
+    def add_processor(self, proc):
+        if proc not in self.processors:
+            self.processors.append(proc)
+
+    def sort_processors(self):
+        self.processors.sort(key=lambda x: x.priority)
+
+    @classmethod
+    def register_output(cls, name, out, force=False):
+        if not force and name in cls.outputs_registry:
+            raise ValueError('Output {!r} is already registered')
+        cls.outputs_registry[name] = out
+
+    def add_output(self, out):
+        if out not in self.outputs:
+            self.outputs.append(out)
+
+    def sort_outputs(self):
+        self.outputs.sort(key=lambda x: x.priority)
+
+    def process(self):
+        if self.verbosity > 0:
+            print('[{}]'.format(time.strftime('%Y-%m-%d %H:%M:%S')), end=' ', flush=True)
+
+        # Берём трек из первого инпута, который имеется
+        track = None
+        for inp in self.inputs:
+            track = inp.grab(self)
             if track:
                 break
 
-    if track and (not track['artist'] or not track['title']):
-        track = None
+        # Если нет ничего, берём кэш, например, ластфма, чтобы показать хоть что-то
+        if not track:
+            for inp in self.inputs:
+                track = inp.get_cached_track(self)
+                if track:
+                    break
 
-    # Печатаем дебаг в консоль
-    if track:
-        print('{artist} - {title}'.format(**track), end='')
-    else:
-        print('[nothing]', end='')
-    sys.stdout.flush()
+        if track and (not track['artist'] or not track['title']):
+            track = None
 
-    # Трек не изменился — ничего не делаем
-    if tunecmp(track, last_track):
-        print()
-        return
-    last_track = track
+        # Печатаем дебаг в консоль
+        if self.verbosity > 0:
+            if track:
+                print('{artist} - {title}'.format(**track), end='', flush=True)
+            else:
+                print('[nothing]', end='', flush=True)
 
-    if track:
-        # Запускаем дополнительные обработчики, которые добавят какую-нибудь
-        # полезноту типа картинки с ютуба
-        for proc in processors:
-            track.update(proc.process(track.copy()))
+        # Трек не изменился — ничего не делаем
+        if tunecmp(track, self.last_track):
+            if self.verbosity > 0:
+                print('', flush=True)
+            return
+        self.last_track = track
 
-    # Оутпутим
-    for out in outputs:
-        out.write(track.copy() if track else None)
+        if track:
+            # Запускаем дополнительные обработчики, которые добавят какую-нибудь
+            # полезноту типа картинки с ютуба
+            for proc in self.processors:
+                track.update(proc.process(self, track.copy()))
 
-    print()
-    sys.stdout.flush()
+        # Оутпутим
+        for out in self.outputs:
+            out.write(self, track.copy() if track else None)
+
+        if self.verbosity > 0:
+            print('', flush=True)
+
+    def stop(self):
+        self.quit_event.set()
+
+    def run(self):
+        # Проверяем корректность интервала между проверками
+        assert self.interval > 0.0
+
+        # И запускаем основной рабочий цикл
+        tm = (time.time() // self.interval) * self.interval + self.interval_offset
+
+        while not self.quit_event.is_set():
+            try:
+                self.process()
+            except Exception:
+                traceback.print_exc()
+
+            while tm <= time.time():
+                tm += self.interval
+
+            sleep_tm = tm - time.time()
+            if sleep_tm > 0:
+                self.quit_event.wait(sleep_tm)
+
+    def download(self, req, headers=None):
+        if isinstance(req, str):
+            req = Request(req)
+
+        ready_headers = self.default_headers.copy()
+        if self.user_agent:
+            ready_headers['User-Agent'] = self.user_agent
+        if headers:
+            ready_headers.update(headers)
+        for k, v in ready_headers.items():
+            req.add_header(k, v)
+
+        return urlopen(req, timeout=self.download_timeout).read()
 
 
 # Утилиты
@@ -366,21 +526,6 @@ def tunecmp(info1, info2):
     return info1.get('artist') == info2.get('artist') and info1.get('title') == info2.get('title')
 
 
-def download(req, headers=None):
-    if isinstance(req, str):
-        req = Request(req)
-
-    ready_headers = default_headers.copy()
-    if config.get('user_agent'):
-        ready_headers['User-Agent'] = config['user_agent']
-    if headers:
-        ready_headers.update(headers)
-    for k, v in ready_headers.items():
-        req.add_header(k, v)
-
-    return urlopen(req, timeout=config['download_timeout']).read()
-
-
 def esc_cmd(s):
     # Кавычек в начале и в конце нет, использовать примерно так:
     # "'{}'".format(esc_cmd(foo))
@@ -396,81 +541,19 @@ def esc_html(s):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config', default=os.path.expanduser('~/.amtunerc'), help='Path to configuration file (default ~/.amtunerc)')
+    parser.add_argument('-c', '--config', default=os.path.expanduser('~/.config/amtune'), help='Path to configuration file (default ~/.config/amtune)')
+    parser.add_argument("-v", "--verbosity", action="count", help="verbose output", default=0)
     args = parser.parse_args()
 
-    with open(args.config, 'r', encoding='utf-8-sig') as fp:
-        config.update(json.load(fp))
+    amtune = AMTune(verbosity=args.verbosity)
+    amtune.read_config_file(args.config)
 
-    # Запускаем инпуты
-    if not config['inputs']:
-        raise ValueError('inputs are not set')
+    try:
+        amtune.run()
+    except (KeyboardInterrupt, SystemExit):
+        print()
 
-    for typ, kwargs in config['inputs'].items():
-        if typ == 'deadbeef':
-            inp = DeadbeefInput(**kwargs)
-            inputs_dict['deadbeef'] = inp
-        elif typ == 'lastfm':
-            inp = LastfmInput(**kwargs)
-            inputs_dict['lastfm'] = inp
-        else:
-            raise TypeError('Unknown input: {!r}'.format(typ))
-        inputs.append(inp)
-
-    inputs.sort(key=lambda x: x.priority)
-
-    # Запускаем дополнительные обработчики
-    if config['processors']:
-        for typ, kwargs in config['processors'].items():
-            if typ == 'youtube':
-                inp = YouTubeProcessor(**kwargs)
-            else:
-                raise TypeError('Unknown processor: {!r}'.format(typ))
-            processors.append(inp)
-
-    processors.sort(key=lambda x: x.priority)
-
-    # Запускаем оутпуты
-    if not config['outputs']:
-        raise ValueError('outputs are not set')
-
-    outputs_cfg = config['outputs']
-    if isinstance(outputs_cfg, dict):
-        outputs_cfg = [[k, v] for k, v in outputs_cfg.items()]  # pylint: disable=E1101
-    for typ, kwargs in outputs_cfg:
-        if typ == 'file':
-            inp = FileOutput(**kwargs)
-        elif typ == 'command':
-            inp = CommandOutput(**kwargs)
-        else:
-            raise TypeError('Unknown output: {!r}'.format(typ))
-        outputs.append(inp)
-
-    outputs.sort(key=lambda x: x.priority)
-
-    # Проверяем корректность интервала между проверками
-    interval = float(config['interval'])
-    assert interval > 0.0
-    interval_offset = float(config['interval_offset'])
-
-    # И запускаем основной рабочий цикл
-    tm = (time.time() // interval) * interval + interval_offset
-
-    while True:
-        try:
-            process()
-        except Exception:
-            traceback.print_exc()
-
-        while tm <= time.time():
-            tm += interval
-
-        sleep_tm = tm - time.time()
-        try:
-            if sleep_tm > 0:
-                time.sleep(sleep_tm)
-        except (KeyboardInterrupt, SystemExit):
-            break
+    return 0
 
 
 if __name__ == '__main__':
