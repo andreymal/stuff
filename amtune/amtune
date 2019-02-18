@@ -15,6 +15,7 @@ from threading import Event
 from subprocess import Popen, PIPE, DEVNULL
 from urllib.request import Request, urlopen
 from urllib.parse import quote
+from typing import Optional, Type, Iterable, Union, Any, Tuple, List, Dict
 
 
 __version__ = '0.0.2'
@@ -24,25 +25,28 @@ __version__ = '0.0.2'
 
 
 class TrackInfo:
-    def __init__(self, artist, title, src=None, image_path=None, extra=None):
+    def __init__(
+        self, artist: str, title: str, src: Optional[str] = None,
+        image_path: Optional[str] = None, extra: Optional[Dict[str, Any]] = None
+    ):
         self.artist = str(artist or '')
         self.title = str(title or '')
         self.src = str(src) if src else None
         self.image_path = str(image_path) if image_path else None
         self.extra = dict(extra) if extra else {}
 
-    def get_extra(self, key, default=None):
+    def get_extra(self, key: str, default: Any = None) -> Any:
         return self.extra.get(key, default)
 
-    def set_extra(self, key, value):
+    def set_extra(self, key: str, value: Any) -> None:
         self.extra[key] = value
 
-    def same_track(self, other):
+    def same_track(self, other: Optional['TrackInfo']) -> bool:
         if not isinstance(other, TrackInfo):
             return False
         return other.artist == self.artist and other.title == self.title
 
-    def copy(self):
+    def copy(self) -> 'TrackInfo':
         return TrackInfo(
             artist=self.artist,
             title=self.title,
@@ -59,28 +63,28 @@ class TuneInput:
     priority = 50
 
     def __init__(self, **kwargs):
-        self._last = None
+        self._last = None  # type: Optional[TrackInfo]
 
-    def grab(self, amtune):
+    def grab(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         return None
 
-    def get_last(self, amtune):
+    def get_last(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         return self._last.copy() if self._last is not None else None
 
-    def get_cached_track(self, amtune):
+    def get_cached_track(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         return None
 
 
 class DeadbeefInput(TuneInput):
     priority = 40
 
-    def __init__(self, deadbeef_cmd='deadbeef'):
+    def __init__(self, deadbeef_cmd: str = 'deadbeef'):
         super().__init__()
         self.deadbeef_cmd = deadbeef_cmd
         self.deadbeef_args = shlex.split(self.deadbeef_cmd)
         self.deadbeef_args[0] = shutil.which(self.deadbeef_args[0]) or self.deadbeef_args[0]
 
-    def grab(self, amtune):
+    def grab(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         player = Popen(self.deadbeef_args + [
             '--nowplaying-tf',
             '%artist% :::::::: %title%',
@@ -105,14 +109,14 @@ class DeadbeefInput(TuneInput):
 
 
 class LastfmInput(TuneInput):
-    def __init__(self, username, cache_timeout=120):
+    def __init__(self, username: str, cache_timeout: float = 120.0):
         import lxml.html  # pylint: disable=unused-variable; just test requirements
         super().__init__()
         self.username = username
         self.cache_timeout = max(0.0, float(cache_timeout))
-        self._cache = None
+        self._cache = None  # type: Optional[Tuple[float, TrackInfo]]
 
-    def grab(self, amtune):
+    def grab(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         import lxml.html
         import lxml.etree
 
@@ -154,7 +158,7 @@ class LastfmInput(TuneInput):
         self._cache = (time.time(), self._last.copy())
         return self._last.copy()
 
-    def get_cached_track(self, amtune):
+    def get_cached_track(self, amtune: 'AMTune') -> Optional[TrackInfo]:
         if not self._cache or time.time() - self._cache[0] > self.cache_timeout:
             self._cache = None
             return None
@@ -170,22 +174,22 @@ class TuneProcessor:
     def __init__(self, **kwargs):
         pass
 
-    def process(self, amtune, track):
+    def process(self, amtune: 'AMTune', track: TrackInfo) -> Optional[TrackInfo]:
         return None
 
 
 class YouTubeProcessor(TuneProcessor):
-    def __init__(self, saving_image_path=None):
+    def __init__(self, saving_image_path: Optional[str] = None):
         super().__init__()
         self.saving_image_path = saving_image_path
 
-    def process(self, amtune, track):
+    def process(self, amtune: 'AMTune', track: TrackInfo) -> Optional[TrackInfo]:
         if not self.saving_image_path or not track.get_extra('youtube'):
             return None
 
         # Если есть ютуб у ластфма, то в качестве иконки для уведомляшки берём картинку оттуда
         image_url = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'.format(track.get_extra('youtube'))
-        image_data = None
+        image_data = None  # type: Optional[bytes]
         for _ in range(3):
             try:
                 image_data = amtune.download(image_url)
@@ -193,14 +197,13 @@ class YouTubeProcessor(TuneProcessor):
             except IOError:
                 time.sleep(0.3)
 
+        image_path = None  # type: Optional[str]
         if image_data:
             with open(self.saving_image_path, 'wb') as fp:
                 fp.write(image_data)
             image_path = self.saving_image_path
-        else:
-            image_path = None
 
-        new_track = None
+        new_track = None  # type: Optional[TrackInfo]
         if image_path:
             new_track = track.copy()
             new_track.image_path = image_path
@@ -216,12 +219,17 @@ class TuneOutput:
     def __init__(self, **kwargs):
         pass
 
-    def write(self, amtune, track):
+    def write(self, amtune: 'AMTune', track: Optional[TrackInfo]) -> None:
         pass
 
 
 class FileOutput(TuneOutput):
-    def __init__(self, path, data, emptydata='', imgdata=None, default_image_path=None, encoding='utf-8', ignoresrc=None, ignored_as_empty=False):
+    def __init__(
+        self, path: str, data: Optional[str] = '', emptydata: Optional[str] = '',
+        imgdata: Optional[str] = None, default_image_path: Optional[str] = None,
+        encoding: str = 'utf-8', ignoresrc: Optional[List[str]] = None,
+        ignored_as_empty: bool = False
+    ):
         super().__init__()
         self.path = path
         self.data = data
@@ -232,13 +240,14 @@ class FileOutput(TuneOutput):
         self.ignoresrc = ignoresrc or []
         self.ignored_as_empty = ignored_as_empty
 
-    def write(self, amtune, track):
+    def write(self, amtune: 'AMTune', track: Optional[TrackInfo]) -> None:
         if track and track.src in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
             track = None
 
-        kwargs = {}
+        kwargs = {}  # type: Dict[str, str]
+        datafmt = None  # type: Optional[str]
 
         # Собираем инфу
         if track:
@@ -271,7 +280,11 @@ class FileOutput(TuneOutput):
 
 
 class CommandOutput(TuneOutput):
-    def __init__(self, cmd, emptycmd='', imgcmd=None, default_image_path=None, ignoresrc=None, ignored_as_empty=False):
+    def __init__(
+        self, cmd: str, emptycmd: str = '', imgcmd: Optional[str] = None,
+        default_image_path: Optional[str] = None, ignoresrc: Optional[List[str]] = None,
+        ignored_as_empty: bool = False
+    ):
         super().__init__()
         self.cmd = cmd
         self.emptycmd = emptycmd
@@ -280,13 +293,13 @@ class CommandOutput(TuneOutput):
         self.ignoresrc = ignoresrc or []
         self.ignored_as_empty = ignored_as_empty
 
-    def write(self, amtune, track):
+    def write(self, amtune: 'AMTune', track: Optional[TrackInfo]) -> None:
         if track and track.src in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
             track = None
 
-        kwargs = {}
+        kwargs = {}  # type: Dict[str, str]
 
         # Собираем инфу
         if track:
@@ -327,38 +340,38 @@ class AMTune:
     inputs_registry = {
         'deadbeef': DeadbeefInput,
         'lastfm': LastfmInput,
-    }
+    }  # type: Dict[str, Type[TuneInput]]
 
     processors_registry = {
         'youtube': YouTubeProcessor,
-    }
+    }  # type: Dict[str, Type[TuneProcessor]]
 
     outputs_registry = {
         'file': FileOutput,
         'command': CommandOutput,
-    }
+    }  # type: Dict[str, Type[TuneOutput]]
 
     default_headers = {
         'Accept': '*/*',
         'Accept-Language': 'ru,en-US;q=0.8,en;q=0.5,de;q=0.3',
         'Connection': 'close',
         'User-Agent': 'amtune/{}'.format(__version__),
-    }
+    }  # type: Dict[str, str]
 
-    def __init__(self, verbosity=0):
-        self.inputs = []
-        self.processors = []
-        self.outputs = []
+    def __init__(self, verbosity: int = 0):
+        self.inputs = []  # type: List[TuneInput]
+        self.processors = []  # type: List[TuneProcessor]
+        self.outputs = []  # type: List[TuneOutput]
 
         self.interval = 15.0
         self.interval_offset = 0.05
         self.download_timeout = 15.0
-        self.user_agent = None
+        self.user_agent = None  # type: Optional[str]
 
-        self.last_track = None
+        self.last_track = None  # type: Optional[TrackInfo]
         self.verbosity = int(verbosity)
 
-        self.quit_event = Event()
+        self.quit_event = Event()  # type: Event
 
         self._listeners = {
             'start': [],          # (amtune: AMTune)
@@ -372,29 +385,29 @@ class AMTune:
             'output': [],         # (amtune: AMTune, track: Optional[TrackInfo], out: TuneOutput)
             'output_end': [],     # (amtune: AMTune, track: Optional[TrackInfo])
             'done': [],           # (amtune: AMTune, exc: Optional[Exception])
-        }
+        }  # type: Dict[str, List[Any]]
 
-    def subscribe(self, name, listener):
+    def subscribe(self, name: str, listener: Any) -> None:
         if name not in self._listeners:
             raise ValueError('Unknown event type: {!r}'.format(name))
         if listener not in self._listeners[name]:
             self._listeners[name].append(listener)
 
-    def unsubscribe(self, name, listener):
+    def unsubscribe(self, name: str, listener: Any) -> None:
         if name not in self._listeners:
             raise ValueError('Unknown event type: {!r}'.format(name))
         if listener in self._listeners[name]:
             self._listeners[name].remove(listener)
 
     def _call(
-        self, name, args=None, kwargs=None
-    ):
+        self, name: str, args: Optional[Iterable[Any]] = None, kwargs: Optional[Dict[str, Any]] = None
+    ) -> None:
         args = args or ()
         kwargs = kwargs or {}
         for listener in self._listeners[name]:
             listener(*args, **kwargs)
 
-    def apply_config(self, config):
+    def apply_config(self, config: Dict[str, Any]) -> None:
         if 'interval' in config:
             self.interval = float(config['interval'])
 
@@ -445,7 +458,7 @@ class AMTune:
 
         self.sort_outputs()
 
-    def read_config_file(self, path):
+    def read_config_file(self, path: str) -> None:
         with open(path, 'r', encoding='utf-8-sig') as fp:
             config = json.load(fp)
         if not isinstance(config, dict):
@@ -453,51 +466,51 @@ class AMTune:
         self.apply_config(config)
 
     @classmethod
-    def register_input(cls, name, inp, force=False):
+    def register_input(cls, name: str, inp: Type[TuneInput], force: bool = False) -> None:
         if not force and name in cls.inputs_registry:
             raise ValueError('Input {!r} is already registered')
         cls.inputs_registry[name] = inp
 
-    def add_input(self, inp):
+    def add_input(self, inp: TuneInput) -> None:
         if inp not in self.inputs:
             self.inputs.append(inp)
 
-    def sort_inputs(self):
+    def sort_inputs(self) -> None:
         self.inputs.sort(key=lambda x: x.priority)
 
     @classmethod
-    def register_processor(cls, name, proc, force=False):
+    def register_processor(cls, name: str, proc: Type[TuneProcessor], force: bool = False) -> None:
         if not force and name in cls.processors_registry:
             raise ValueError('Processor {!r} is already registered')
         cls.processors_registry[name] = proc
 
-    def add_processor(self, proc):
+    def add_processor(self, proc: TuneProcessor) -> None:
         if proc not in self.processors:
             self.processors.append(proc)
 
-    def sort_processors(self):
+    def sort_processors(self) -> None:
         self.processors.sort(key=lambda x: x.priority)
 
     @classmethod
-    def register_output(cls, name, out, force=False):
+    def register_output(cls, name: str, out: Type[TuneOutput], force: bool = False) -> None:
         if not force and name in cls.outputs_registry:
             raise ValueError('Output {!r} is already registered')
         cls.outputs_registry[name] = out
 
-    def add_output(self, out):
+    def add_output(self, out: TuneOutput) -> None:
         if out not in self.outputs:
             self.outputs.append(out)
 
-    def sort_outputs(self):
+    def sort_outputs(self) -> None:
         self.outputs.sort(key=lambda x: x.priority)
 
-    def _process(self):
+    def _process(self) -> None:
         if self.verbosity > 0:
             print('[{}]'.format(time.strftime('%Y-%m-%d %H:%M:%S')), end=' ', flush=True)
 
         # Берём трек из первого инпута, который имеется
         self._call('input_start', (self,))
-        track = None
+        track = None  # type: Optional[TrackInfo]
         for inp in self.inputs:
             self._call('input', (self, track, inp, False))
             track = inp.grab(self)
@@ -584,7 +597,7 @@ class AMTune:
             if sleep_tm > 0:
                 self.quit_event.wait(sleep_tm)
 
-    def download(self, req, headers=None):
+    def download(self, req: Union[Request, str], headers: Optional[Dict[str, str]] = None) -> bytes:
         if isinstance(req, str):
             req = Request(req)
 
@@ -606,9 +619,9 @@ class AMTuneUI:
         'idle': os.path.join(os.path.dirname(__file__), 'amtune-idle.svg'),
         'active': os.path.join(os.path.dirname(__file__), 'amtune-active.svg'),
         'error': os.path.join(os.path.dirname(__file__), 'amtune-error.svg'),
-    }
+    }  # type: Dict[str, str]
 
-    def __init__(self, amtune, use_appindicator=True):
+    def __init__(self, amtune: AMTune, use_appindicator: bool = True):
         import gi
         gi.require_version('Gtk', '3.0')
         from gi.repository import Gtk
@@ -651,18 +664,19 @@ class AMTuneUI:
             self._ind.set_from_file(self.icons['idle'])
             self._ind.connect('popup-menu', self._gtk_popup)
 
-        self._about = None
+        self._about = None  # type: Any
 
-        self._amtune = amtune
-        self._last_exc = None
-        self._last_track = None
+        self._amtune = amtune  # type: Optional[AMTune]
+        self._last_exc = None  # type: Optional[Exception]
+        self._last_track = None  # type: Optional[TrackInfo]
 
-        self._ondone_bind = self._ondone
+        self._ondone_bind = self._ondone  # type: Optional[Any]
         assert self._ondone_bind
         amtune.subscribe('done', self._ondone_bind)
 
-    def destroy(self):
-        self._amtune.unsubscribe('done', self._ondone_bind)
+    def destroy(self) -> None:
+        if self._amtune and self._ondone_bind:
+            self._amtune.unsubscribe('done', self._ondone_bind)
 
         self._ondone_bind = None
         self._amtune = None
@@ -675,16 +689,17 @@ class AMTuneUI:
         self._appind = None
         self._ind = None
 
-    def main(self):
+    def main(self) -> None:
         from gi.repository import Gtk
         Gtk.main()
 
-    def _ondone(self, amtune, exc):
+    def _ondone(self, amtune: AMTune, exc: Optional[Exception]) -> None:
         from gi.repository import GLib
         assert amtune is self._amtune
+        assert self._amtune is not None
         GLib.idle_add(self._gtk_update, self._amtune.last_track, exc)
 
-    def _gtk_update(self, last_track, exc):
+    def _gtk_update(self, last_track: Optional[TrackInfo], exc: Optional[Exception]) -> None:
         try:
             if exc:
                 self._last_exc = exc
@@ -704,7 +719,7 @@ class AMTuneUI:
         except Exception:
             traceback.print_exc()
 
-    def _gtk_show_about(self, source):
+    def _gtk_show_about(self, source: Any) -> None:
         from gi.repository import Gtk
 
         if self._about:
@@ -723,15 +738,15 @@ class AMTuneUI:
 
         self._about.show()
 
-    def _gtk_popup(self, icon, button, tm):
+    def _gtk_popup(self, icon: Any, button: Any, tm: Any) -> None:
         from gi.repository import Gtk
         self._menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, tm)
 
-    def _gtk_stop(self, source):
+    def _gtk_stop(self, source: Any) -> None:
         from gi.repository import Gtk
         Gtk.main_quit()
 
-    def set_tray_icon(self, icon_name):
+    def set_tray_icon(self, icon_name: str) -> bool:
         if icon_name not in self.icons:
             return False
         if self._appind:
@@ -742,12 +757,12 @@ class AMTuneUI:
             return True
         return False
 
-    def set_tray_track_label(self, label):
+    def set_tray_track_label(self, label: str) -> None:
         self._item_track.set_label(label)
 
 
 class AMTuneGTK(AMTune):
-    def run(self):
+    def run(self) -> None:
         from threading import Thread
 
         ui = AMTuneUI(self)
@@ -765,7 +780,7 @@ class AMTuneGTK(AMTune):
 # Утилиты
 
 
-def same_track(info1, info2):
+def same_track(info1: Optional[TrackInfo], info2: Optional[TrackInfo]) -> bool:
     '''Сравнивает artist и title у этих двух словарей. Возвращает True, если
     совпадают. В отличие от TrackInfo.same_track(), может принимать оба None.
     '''
@@ -775,27 +790,27 @@ def same_track(info1, info2):
     return info1.same_track(info2)
 
 
-def esc_cmd(s):
+def esc_cmd(s: str) -> str:
     # Кавычек в начале и в конце нет, использовать примерно так:
     # "'{}'".format(esc_cmd(foo))
     return s.replace("'", "'\"'\"'").replace('\n', ' ')
 
 
-def esc_html(s):
+def esc_html(s: str) -> str:
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 
 # Запускалка
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=os.path.expanduser('~/.config/amtune'), help='Path to configuration file (default ~/.config/amtune)')
     parser.add_argument("-v", "--verbosity", action="count", help="verbose output", default=0)
     parser.add_argument('--gtk', default=False, action='store_true', help='show gtk tray icon')
     args = parser.parse_args()
 
-    amtune = None
+    amtune = None  # type: Optional[AMTune]
 
     if args.gtk:
         amtune = AMTuneGTK(verbosity=args.verbosity)
