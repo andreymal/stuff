@@ -563,6 +563,169 @@ class AMTune:
         return urlopen(req, timeout=self.download_timeout).read()
 
 
+class AMTuneUI:
+    appid = 'amtune'
+    icons = {
+        # TODO: расхардкодить бы
+        'idle': os.path.join(os.path.dirname(__file__), 'amtune-idle.svg'),
+        'active': os.path.join(os.path.dirname(__file__), 'amtune-active.svg'),
+        'error': os.path.join(os.path.dirname(__file__), 'amtune-error.svg'),
+    }
+
+    def __init__(self, amtune, use_appindicator=True):
+        import gi
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import Gtk
+
+        self._use_appindicator = use_appindicator
+
+        if self._use_appindicator:
+            try:
+                gi.require_version('AppIndicator3', '0.1')
+                from gi.repository import AppIndicator3
+            except Exception:
+                self._use_appindicator = False
+
+        self._item_track = Gtk.MenuItem(label='[nothing]')
+        self._item_track.set_sensitive(False)
+
+        self._item_about = Gtk.MenuItem(label='About')
+        self._item_about.connect('activate', self._gtk_show_about)
+
+        self._item_quit = Gtk.MenuItem(label='Quit')
+        self._item_quit.connect('activate', self._gtk_stop)
+
+        self._menu = Gtk.Menu()
+        self._menu.append(self._item_track)
+        self._menu.append(self._item_about)
+        self._menu.append(self._item_quit)
+        self._menu.show_all()
+
+        if self._use_appindicator:
+            from gi.repository import AppIndicator3
+            self._appind = AppIndicator3.Indicator.new(
+                self.appid,
+                self.icons['idle'],
+                AppIndicator3.IndicatorCategory.APPLICATION_STATUS
+            )
+            self._appind.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+            self._appind.set_menu(self._menu)
+        else:
+            self._ind = Gtk.StatusIcon()
+            self._ind.set_from_file(self.icons['idle'])
+            self._ind.connect('popup-menu', self._gtk_popup)
+
+        self._about = None
+
+        self._amtune = amtune
+        self._last_exc = None
+        self._last_track = None
+
+        self._ondone_bind = self._ondone
+        assert self._ondone_bind
+        amtune.subscribe('done', self._ondone_bind)
+
+    def destroy(self):
+        self._amtune.unsubscribe('done', self._ondone_bind)
+
+        self._ondone_bind = None
+        self._amtune = None
+
+        self._menu = None
+        self._item_track = None
+        self._item_about = None
+        self._item_quit = None
+        self._about = None
+        self._appind = None
+        self._ind = None
+
+    def main(self):
+        from gi.repository import Gtk
+        Gtk.main()
+
+    def _ondone(self, amtune, exc):
+        from gi.repository import GLib
+        assert amtune is self._amtune
+        GLib.idle_add(self._gtk_update, self._amtune.last_track, exc)
+
+    def _gtk_update(self, last_track, exc):
+        try:
+            if exc:
+                self._last_exc = exc
+                self.set_tray_track_label('[error]')
+                self.set_tray_icon('error')
+
+            elif self._last_exc or not tunecmp(self._last_track, last_track):
+                self._last_exc = None
+                if last_track:
+                    self.set_tray_track_label('{} – {}'.format(last_track['artist'], last_track['title']))
+                    self.set_tray_icon('active')
+                else:
+                    self.set_tray_track_label('[nothing]')
+                    self.set_tray_icon('idle')
+
+            self._last_track = last_track
+        except Exception:
+            traceback.print_exc()
+
+    def _gtk_show_about(self, source):
+        from gi.repository import Gtk
+
+        if self._about:
+            self._about.destroy()
+            self._about = None
+
+        self._about = Gtk.AboutDialog()
+        self._about.set_program_name('amtune')
+        self._about.set_version(__version__)
+        self._about.set_logo_icon_name(None)
+        self._about.set_authors(['andreymal'])
+        self._about.set_copyright('© 2019 andreymal')
+        self._about.set_website('https://github.com/andreymal/stuff/tree/master/amtune')
+        self._about.set_license_type(Gtk.License.MIT_X11)
+        self._about.connect('response', lambda *args: self._about.hide())
+
+        self._about.show()
+
+    def _gtk_popup(self, icon, button, tm):
+        from gi.repository import Gtk
+        self._menu.popup(None, None, Gtk.StatusIcon.position_menu, icon, button, tm)
+
+    def _gtk_stop(self, source):
+        from gi.repository import Gtk
+        Gtk.main_quit()
+
+    def set_tray_icon(self, icon_name):
+        if icon_name not in self.icons:
+            return False
+        if self._appind:
+            self._appind.set_icon(self.icons[icon_name])
+            return True
+        if self._ind:
+            self._ind.set_from_file(self.icons[icon_name])
+            return True
+        return False
+
+    def set_tray_track_label(self, label):
+        self._item_track.set_label(label)
+
+
+class AMTuneGTK(AMTune):
+    def run(self):
+        from threading import Thread
+
+        ui = AMTuneUI(self)
+
+        worker = Thread(target=super().run)
+        worker.start()
+
+        try:
+            ui.main()
+        finally:
+            self.stop()
+            ui.destroy()
+
+
 # Утилиты
 
 
@@ -599,9 +762,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=os.path.expanduser('~/.config/amtune'), help='Path to configuration file (default ~/.config/amtune)')
     parser.add_argument("-v", "--verbosity", action="count", help="verbose output", default=0)
+    parser.add_argument('--gtk', default=False, action='store_true', help='show gtk tray icon')
     args = parser.parse_args()
 
-    amtune = AMTune(verbosity=args.verbosity)
+    amtune = None
+
+    if args.gtk:
+        amtune = AMTuneGTK(verbosity=args.verbosity)
+    else:
+        amtune = AMTune(verbosity=args.verbosity)
     amtune.read_config_file(args.config)
 
     try:
