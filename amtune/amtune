@@ -20,6 +20,38 @@ from urllib.parse import quote
 __version__ = '0.0.2'
 
 
+# Трек
+
+
+class TrackInfo:
+    def __init__(self, artist, title, src=None, image_path=None, extra=None):
+        self.artist = str(artist or '')
+        self.title = str(title or '')
+        self.src = str(src) if src else None
+        self.image_path = str(image_path) if image_path else None
+        self.extra = dict(extra) if extra else {}
+
+    def get_extra(self, key, default=None):
+        return self.extra.get(key, default)
+
+    def set_extra(self, key, value):
+        self.extra[key] = value
+
+    def same_track(self, other):
+        if not isinstance(other, TrackInfo):
+            return False
+        return other.artist == self.artist and other.title == self.title
+
+    def copy(self):
+        return TrackInfo(
+            artist=self.artist,
+            title=self.title,
+            src=self.src,
+            image_path=self.image_path,
+            extra=self.extra,  # copied by constructor
+        )
+
+
 # Инпуты
 
 
@@ -33,7 +65,7 @@ class TuneInput:
         return None
 
     def get_last(self, amtune):
-        return dict(self._last) if self._last is not None else None
+        return self._last.copy() if self._last is not None else None
 
     def get_cached_track(self, amtune):
         return None
@@ -63,13 +95,13 @@ class DeadbeefInput(TuneInput):
             self._last = None
             return None
 
-        self._last = {
-            'artist': artist.strip(),
-            'title': title.strip(),
-            'src': 'deadbeef',
-        }
+        self._last = TrackInfo(
+            artist.strip(),
+            title.strip(),
+            src='deadbeef',
+        )
 
-        return dict(self._last)
+        return self._last.copy()
 
 
 class LastfmInput(TuneInput):
@@ -113,20 +145,20 @@ class LastfmInput(TuneInput):
         youtube = now.xpath('td[contains(@class, "chartlist-play")]/a')
         youtube = youtube[0].get('data-youtube-id') if youtube else None
 
-        self._last = {
-            'artist': artist[0].text.strip(),
-            'title': title[0].text.strip(),
-            'src': 'lastfm',
-            'youtube': youtube,
-        }
-        self._cache = (time.time(), dict(self._last))
-        return dict(self._last)
+        self._last = TrackInfo(
+            artist[0].text.strip(),
+            title[0].text.strip(),
+            src='lastfm',
+            extra={'youtube': youtube},
+        )
+        self._cache = (time.time(), self._last.copy())
+        return self._last.copy()
 
     def get_cached_track(self, amtune):
         if not self._cache or time.time() - self._cache[0] > self.cache_timeout:
             self._cache = None
             return None
-        return self._cache[1]
+        return self._cache[1].copy()
 
 
 # Дополнительные обработчики
@@ -139,7 +171,7 @@ class TuneProcessor:
         pass
 
     def process(self, amtune, track):
-        return {}
+        return None
 
 
 class YouTubeProcessor(TuneProcessor):
@@ -148,11 +180,11 @@ class YouTubeProcessor(TuneProcessor):
         self.saving_image_path = saving_image_path
 
     def process(self, amtune, track):
-        if not self.saving_image_path or not track.get('youtube'):
-            return {}
+        if not self.saving_image_path or not track.get_extra('youtube'):
+            return None
 
         # Если есть ютуб у ластфма, то в качестве иконки для уведомляшки берём картинку оттуда
-        image_url = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'.format(track['youtube'])
+        image_url = 'https://i.ytimg.com/vi/{}/mqdefault.jpg'.format(track.get_extra('youtube'))
         image_data = None
         for _ in range(3):
             try:
@@ -168,7 +200,11 @@ class YouTubeProcessor(TuneProcessor):
         else:
             image_path = None
 
-        return {'image_path': image_path} if image_path else {}
+        new_track = None
+        if image_path:
+            new_track = track.copy()
+            new_track.image_path = image_path
+        return new_track
 
 
 # Оутпуты
@@ -197,7 +233,7 @@ class FileOutput(TuneOutput):
         self.ignored_as_empty = ignored_as_empty
 
     def write(self, amtune, track):
-        if track and track['src'] in self.ignoresrc:
+        if track and track.src in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
             track = None
@@ -206,10 +242,10 @@ class FileOutput(TuneOutput):
 
         # Собираем инфу
         if track:
-            kwargs['artist'] = track['artist']
-            kwargs['title'] = track['title']
+            kwargs['artist'] = track.artist
+            kwargs['title'] = track.title
 
-            image_path = track.get('image_path') or self.default_image_path
+            image_path = track.image_path or self.default_image_path
             if image_path and self.imgdata is not None:
                 datafmt = self.imgdata
                 kwargs['image_path'] = image_path
@@ -245,7 +281,7 @@ class CommandOutput(TuneOutput):
         self.ignored_as_empty = ignored_as_empty
 
     def write(self, amtune, track):
-        if track and track['src'] in self.ignoresrc:
+        if track and track.src in self.ignoresrc:
             if not self.ignored_as_empty:
                 return
             track = None
@@ -254,10 +290,10 @@ class CommandOutput(TuneOutput):
 
         # Собираем инфу
         if track:
-            kwargs['artist'] = track['artist']
-            kwargs['title'] = track['title']
+            kwargs['artist'] = track.artist
+            kwargs['title'] = track.title
 
-            image_path = track.get('image_path') or self.default_image_path
+            image_path = track.image_path or self.default_image_path
             if image_path and self.imgcmd is not None:
                 datafmt = self.imgcmd
                 kwargs['image_path'] = image_path
@@ -327,14 +363,14 @@ class AMTune:
         self._listeners = {
             'start': [],          # (amtune: AMTune)
             'input_start': [],    # (amtune: AMTune)
-            'input': [],          # (amtune: AMTune, track: Optional[Dict[str, Any]], inp: TuneInput, get_cached: bool)
-            'input_end': [],      # (amtune: AMTune, track: Optional[Dict[str, Any]])
-            'process_start': [],  # (amtune: AMTune, track: Dict[str, Any])
-            'process': [],        # (amtune: AMTune, track: Dict[str, Any], proc: TuneProcessor)
-            'process_end': [],    # (amtune: AMTune, track: Dict[str, Any])
-            'output_start': [],   # (amtune: AMTune, track: Optional[Dict[str, Any]])
-            'output': [],         # (amtune: AMTune, track: Optional[Dict[str, Any]], out: TuneOutput)
-            'output_end': [],     # (amtune: AMTune, track: Optional[Dict[str, Any]])
+            'input': [],          # (amtune: AMTune, track: Optional[TrackInfo], inp: TuneInput, get_cached: bool)
+            'input_end': [],      # (amtune: AMTune, track: Optional[TrackInfo])
+            'process_start': [],  # (amtune: AMTune, track: TrackInfo)
+            'process': [],        # (amtune: AMTune, track: TrackInfo, proc: TuneProcessor)
+            'process_end': [],    # (amtune: AMTune, track: TrackInfo)
+            'output_start': [],   # (amtune: AMTune, track: Optional[TrackInfo])
+            'output': [],         # (amtune: AMTune, track: Optional[TrackInfo], out: TuneOutput)
+            'output_end': [],     # (amtune: AMTune, track: Optional[TrackInfo])
             'done': [],           # (amtune: AMTune, exc: Optional[Exception])
         }
 
@@ -476,7 +512,7 @@ class AMTune:
                 if track:
                     break
 
-        if track and (not track['artist'] or not track['title']):
+        if track and (not track.artist or not track.title):
             track = None
 
         self._call('input_end', (self, track))
@@ -484,12 +520,12 @@ class AMTune:
         # Печатаем дебаг в консоль
         if self.verbosity > 0:
             if track:
-                print('{artist} - {title}'.format(**track), end='', flush=True)
+                print('{} - {}'.format(track.artist, track.title), end='', flush=True)
             else:
                 print('[nothing]', end='', flush=True)
 
         # Трек не изменился — ничего не делаем
-        if tunecmp(track, self.last_track):
+        if same_track(track, self.last_track):
             if self.verbosity > 0:
                 print('', flush=True)
             return
@@ -500,7 +536,7 @@ class AMTune:
             self._call('process_start', (self, track))
             for proc in self.processors:
                 self._call('process', (self, track, proc))
-                track.update(proc.process(self, track.copy()))
+                track = proc.process(self, track.copy()) or track
             self._call('process_end', (self, track))
 
         # Оутпутим
@@ -655,10 +691,10 @@ class AMTuneUI:
                 self.set_tray_track_label('[error]')
                 self.set_tray_icon('error')
 
-            elif self._last_exc or not tunecmp(self._last_track, last_track):
+            elif self._last_exc or not same_track(self._last_track, last_track):
                 self._last_exc = None
                 if last_track:
-                    self.set_tray_track_label('{} – {}'.format(last_track['artist'], last_track['title']))
+                    self.set_tray_track_label('{} – {}'.format(last_track.artist, last_track.title))
                     self.set_tray_icon('active')
                 else:
                     self.set_tray_track_label('[nothing]')
@@ -729,20 +765,14 @@ class AMTuneGTK(AMTune):
 # Утилиты
 
 
-def tunecmp(info1, info2):
+def same_track(info1, info2):
     '''Сравнивает artist и title у этих двух словарей. Возвращает True, если
-    совпадают.
+    совпадают. В отличие от TrackInfo.same_track(), может принимать оба None.
     '''
 
-    if bool(info1) != bool(info2):
-        return False
-
-    if not info1 and not info2:
-        return True
-
-    assert info1 and info2
-
-    return info1.get('artist') == info2.get('artist') and info1.get('title') == info2.get('title')
+    if not info1:
+        return bool(info1) == bool(info2)
+    return info1.same_track(info2)
 
 
 def esc_cmd(s):
