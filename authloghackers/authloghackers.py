@@ -3,7 +3,7 @@
 
 import sys
 import gzip
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def process_auth_line(oks_stat, fails_stat, line):
@@ -22,6 +22,7 @@ def process_auth_line(oks_stat, fails_stat, line):
     line = line.strip()
     if not line:
         return
+    lline = line.lower()
 
     month, day, tm = line.split()[:3]
     # В логах почему-то не записывается год, поэтому, считая, что логов
@@ -35,13 +36,13 @@ def process_auth_line(oks_stat, fails_stat, line):
         year -= 1
 
     fail = False
-    if ': Failed password for ' in line:
+    if ': failed password for ' in lline:
         fail = True
-    elif ': Accepted publickey for ' in line:
+    elif ': accepted publickey for ' in lline:
         pass
-    elif ': Accepted password for ' in line:
+    elif ': accepted password for ' in lline:
         pass
-    elif 'ccepted' in line:
+    elif 'accepted' in lline and 'invalid user accepted' not in lline:
         raise RuntimeError('Unexpected "Accepted" word in log')
     else:
         return
@@ -126,8 +127,9 @@ def main():
 
     parser = argparse.ArgumentParser(description='Parses auth.log files and prints success and fail statistics per IP.')
     parser.add_argument('paths', metavar='/path/to/auth.log', type=str, nargs='*', default=['/var/log/auth.log'], help='Path to auth.log file (by default /var/log/auth.log)')
-    parser.add_argument('--mindate', help='show stat for last date greater than this (localtime, format: "%%Y-%%m-%%dT%%H:%%M:%%S")')
-    parser.add_argument('--mintries', type=int, help='show stat for last date equal or greater than this tries count')
+    parser.add_argument('--since', help='show stat for last date greater than this (localtime, format: "%%Y-%%m-%%dT%%H:%%M:%%S")')
+    parser.add_argument('--mintries-failed', type=int, help='show stat of failed tries for last date equal or greater than this tries count')
+    parser.add_argument('--mintries-ok', type=int, help='show stat of successful tries for last date equal or greater than this tries count')
     parser.add_argument('-s', '--sort', action='store', choices=['tries', 'latest'], default='tries', help='select field for sorting')
     parser.add_argument('-a', '--asc', action='store_true', help='sort ascending instead of descending')
     parser.add_argument('-i', '--onlyip', action='store_true', help='print only failed ips (good for scripts; success ips are not printed)')
@@ -139,25 +141,34 @@ def main():
     sort_by = args.sort
     sort_reverse = not args.asc
     verbose = args.verbose
-    mindate = args.mindate
-    mintries = args.mintries
+    since = args.since
+    mintries_failed = args.mintries_failed
+    mintries_ok = args.mintries_ok
     onlyip = args.onlyip
     del parser, args
 
-    if mindate:
-        mindate = datetime.strptime(mindate.strip().replace('T', ' '), '%Y-%m-%d %H:%M:%S')
+    if since:
+        if since == 'today':
+            since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        elif since == 'yesterday':
+            since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            since -= timedelta(days=1)
+        else:
+            since = datetime.strptime(since.strip().replace('T', ' '), '%Y-%m-%d %H:%M:%S')
 
     oks, fails = process_auth_log(paths, verbose=verbose)
     oks = list(oks.items())
     fails = list(fails.items())
 
-    if mindate:
-        oks = [x for x in oks if x[1]['last_date'] >= mindate]
-        fails = [x for x in fails if x[1]['last_date'] >= mindate]
+    if since:
+        oks = [x for x in oks if x[1]['last_date'] >= since]
+        fails = [x for x in fails if x[1]['last_date'] >= since]
 
-    if mintries:
-        oks = [x for x in oks if x[1]['count'] >= mintries]
-        fails = [x for x in fails if x[1]['count'] >= mintries]
+    if mintries_failed:
+        fails = [x for x in fails if x[1]['count'] >= mintries_failed]
+
+    if mintries_ok:
+        oks = [x for x in oks if x[1]['count'] >= mintries_ok]
 
     if verbose:
         print('Sorting...', file=sys.stderr)
