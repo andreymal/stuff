@@ -8,6 +8,7 @@ import stat
 import hashlib
 import argparse
 from datetime import datetime
+from typing import Any, Optional, Iterable, List, Dict, Set, TextIO
 
 try:
     import pwd
@@ -17,9 +18,9 @@ except ImportError:  # Windows
     grp = None
 
 
-use_stdout = None
-out_fp = None
-je = None
+use_stdout = None  # type: Optional[bool]
+out_fp = None  # type: Optional[TextIO]
+je = None  # type: Optional[json.JSONEncoder]
 
 
 class MetaSaveError(Exception):
@@ -27,7 +28,14 @@ class MetaSaveError(Exception):
 
 
 class MetaSave:
-    def __init__(self, paths, root=None, hashers=None, ignore_paths=None, skip=None):
+    def __init__(
+        self,
+        paths: Iterable[str],
+        root: Optional[str] = None,
+        hashers: Optional[Dict[str, Any]] = None,
+        ignore_paths: Optional[Iterable[str]] = None,
+        skip: Optional[Iterable[str]] = None,
+    ):
         """
         :param list paths: список обрабатываемых путей (файлы или каталоги)
         :param str root: каталог, относительно которого будут считаться пути
@@ -46,20 +54,20 @@ class MetaSave:
         else:
             self._paths = list(paths)
 
-        self._root = os.path.abspath(root) if root else None
-        self._hashers = dict(hashers or {})
-        self._ignore_paths = set()
+        self._root = os.path.abspath(root) if root else None  # type: Optional[str]
+        self._hashers = dict(hashers or {})  # type: Dict[str, Any]
+        self._ignore_paths = set()  # type: Set[str]
         for x in ignore_paths or ():
             self._ignore_paths.add(os.path.abspath(os.path.join(self._root or '.', x)))
-        self._skip = set(skip or ())
+        self._skip = set(skip or ())  # type: Set[str]
 
-        self._queue = self._collect_queue()
+        self._queue = self._collect_queue()  # type: List[str]
 
-    def get_queue(self):
+    def get_queue(self) -> List[str]:
         """Возвращает копию очереди."""
         return self._queue[:]
 
-    def get_next_path(self):
+    def get_next_path(self) -> Optional[str]:
         """Возвращает следующий путь из очереди. Если очередь пуста, то
         возвращает None.
         """
@@ -67,7 +75,7 @@ class MetaSave:
             return None
         return self._queue[-1]
 
-    def pop_next_path(self):
+    def pop_next_path(self) -> Optional[str]:
         """Возвращает следующий путь из очереди, при этом удаляя его из этой
         самой очереди. Если очередь пуста, то возвращает None.
         """
@@ -75,7 +83,7 @@ class MetaSave:
             return None
         return self._queue.pop()
 
-    def next(self):
+    def next(self) -> Optional[Dict[str, Any]]:
         """Считает мету для следующего пути в очереди. Если очередь пуста,
         то возвращает None. Если путь является каталогом, добавляет лежащие
         в нём файлы и подкаталоги в очередь. Если случается ошибка,
@@ -87,7 +95,7 @@ class MetaSave:
             return None
         meta = self.calc_meta(path)
 
-        queue_ext = []
+        queue_ext = []  # type: List[str]
         for p in meta.pop('contents', []):
             p_abs = os.path.abspath(os.path.join(self._root or '.', p))
             if p_abs in self._ignore_paths:
@@ -103,7 +111,7 @@ class MetaSave:
             'meta': meta,
         }
 
-    def calc_meta(self, path):
+    def calc_meta(self, path: str) -> Dict[str, Any]:
         """Считает мету для указанного пути."""
         if self._root:
             abspath = os.path.abspath(os.path.join(self._root, path))
@@ -120,7 +128,7 @@ class MetaSave:
 
         path_stat = os.stat(abspath)
 
-        meta = {}
+        meta = {}  # type: Dict[str, Any]
 
         if os.path.isdir(abspath):
             # Если есть root и path относительный, то сохраняем
@@ -136,7 +144,7 @@ class MetaSave:
                 'size': path_stat.st_size,
             }
 
-            file_hashers = {}
+            file_hashers = {}  # type: Dict[str, Any]
             for hash_name, hasher_class in self._hashers.items():
                 file_hashers[hash_name] = hasher_class()
 
@@ -200,15 +208,15 @@ class MetaSave:
 
     # helpers
 
-    def _collect_queue(self):
+    def _collect_queue(self) -> List[str]:
         """Собирает пользовательский список путей в заготовку для очереди.
         Все пути формируются относительно root (если он не указан,
         используются абсолютные пути). Все пути используют прямой слэш,
         даже на Windows.
         """
 
-        prefix = os.path.join(self._root, '') if self._root is not None else None
-        queue = set()
+        prefix = os.path.join(self._root, '') if self._root is not None else None  # type: Optional[str]
+        queue = set()  # type: Set[str]
 
         for x in self._paths:
             path = os.path.abspath(x)
@@ -235,7 +243,7 @@ class MetaSave:
         return queue_list
 
 
-def fprint(*args, **kwargs):
+def fprint(*args: Any, **kwargs: Any) -> None:
     assert 'file' not in kwargs
     assert 'flush' not in kwargs
     if use_stdout:
@@ -245,7 +253,7 @@ def fprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def indent_json(data, indent=2, keep_first_line=False):
+def indent_json(data: Dict[str, Any], indent: int = 2, keep_first_line: bool = False) -> str:
     assert je is not None
     if not isinstance(data, dict):
         raise ValueError
@@ -256,7 +264,7 @@ def indent_json(data, indent=2, keep_first_line=False):
     return result
 
 
-def human_size(n):
+def human_size(n: int) -> str:
     if n == 1:
         return '1 byte'
     if n <= 10 ** 3:
@@ -273,7 +281,7 @@ def human_size(n):
 # main
 
 
-def main():
+def main() -> int:
     global use_stdout, out_fp, je
 
     parser = argparse.ArgumentParser(description='Calculates meta information for directories, files and symlinks.')
@@ -295,7 +303,7 @@ def main():
     args = parser.parse_args()
 
     # Проверяем адекватность аргументов
-    output_path = args.output
+    output_path = args.output  # type: str
     if output_path:
         output_path = os.path.abspath(output_path)
         if os.path.exists(output_path):
@@ -304,7 +312,7 @@ def main():
                 return 2
 
     # Собираем классы для хэширования
-    hashers = {}
+    hashers = {}  # type: Dict[str, Any]
     if args.md5sum:
         hashers['md5sum'] = hashlib.md5
     if args.sha1sum:
@@ -312,14 +320,14 @@ def main():
     if not args.no_sha256sum:
         hashers['sha256sum'] = hashlib.sha256
 
-    use_stdout = not output_path or args.stdout
-    verbose = args.verbose
-    jsonl = args.jsonl
-    ignore_errors = args.ignore_errors
-    root = None if args.absolute else os.path.abspath('.')
+    use_stdout = bool(not output_path or args.stdout)
+    verbose = args.verbose  # type: bool
+    jsonl = args.jsonl  # type: bool
+    ignore_errors = args.ignore_errors  # type: bool
+    root = None if args.absolute else os.path.abspath('.')  # type: Optional[str]
 
     # Собираем все skip'ы в единое множество
-    skip = set()
+    skip = set()  # type: Set[str]
     for s in (args.skip or ()):
         for x in s.split(','):
             x = x.strip().lower()
@@ -327,7 +335,7 @@ def main():
                 skip.add(x)
 
     # Обрабатываем игнорируемые пути
-    ignore_paths = set()
+    ignore_paths = set()  # type: Set[str]
     for x in args.ignore or []:
         x = os.path.abspath(os.path.join(root or '.', x))
         if not os.path.exists(x):
@@ -347,7 +355,7 @@ def main():
         skip=skip,
     )
 
-    old_meta = {}
+    old_meta = {}  # type: Dict[str, Any]
     out_fp = None
     if output_path:
         if args.append:
