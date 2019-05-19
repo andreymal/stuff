@@ -137,7 +137,11 @@ def run_ffmpeg_forever(ffmpeg_cmd):
         ffmpeg = None
 
 
-def build_ffmpeg_cmd(stream, input_args=default_input_args, output_args=default_output_args, output='%Y-%m-%d_%H-%M-%S.mp4', duration=1200, fmt='mp4', ffmpeg_path='ffmpeg'):
+def build_ffmpeg_cmd(
+    stream, input_args=default_input_args, output_args=default_output_args,
+    output='%Y-%m-%d_%H-%M-%S.mp4', duration=1200, fmt='mp4', fmt_options=None,
+    ffmpeg_path='ffmpeg'
+):
     '''Конструирует готовую команду ffmpeg, которая будет записывать сегменты
     из стрима.
 
@@ -148,6 +152,7 @@ def build_ffmpeg_cmd(stream, input_args=default_input_args, output_args=default_
       передана в strftime с датой создания файла
     :param int duration: длительность одного сегмента в секундах
     :param str fmt: формат сегментов
+    :param str fmt_options: опция -segment_format_options (строка)
     :param str ffmpeg_path: путь к ffmpeg или просто используемая команда
     '''
 
@@ -173,6 +178,9 @@ def build_ffmpeg_cmd(stream, input_args=default_input_args, output_args=default_
     cmd.append(str(duration))
     cmd.append('-segment_format')
     cmd.append(fmt)
+    if fmt_options:
+        cmd.append('-segment_format_options')
+        cmd.append(fmt_options)
     cmd.append(os.path.join(working_directory, '_sgout-%07d' + ext))
 
     return cmd
@@ -243,6 +251,7 @@ def main():
         default=default_output_args,
     )
     parser.add_argument('-f', '--segment-format', help='segment format (default: mp4)', default='mp4')
+    parser.add_argument('--segment-format-options', help='segment format options (for more info see ffmpeg docs)', default=None)
     parser.add_argument('-o', '--output', help='output datetime pattern (default: %%Y-%%m-%%d_%%H-%%M-%%S.mp4)', default='%Y-%m-%d_%H-%M-%S.mp4')
     parser.add_argument('-t', '--duration', type=int, default=1200, help='segment duration in seconds (default: 1200; 20 min)')
     parser.add_argument('-s', '--segments', type=int, default=12, help='save only last N segments (0 - save all) (default: 12; 4 hours)')
@@ -271,6 +280,7 @@ def main():
         output=args.output,
         duration=args.duration,
         fmt=args.segment_format,
+        fmt_options=args.segment_format_options,
         ffmpeg_path=args.ffmpeg_cmd,
     )
 
