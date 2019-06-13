@@ -1,17 +1,24 @@
 #!/bin/sh
 
 set -e
+umask 0022
 
+PYTHON="python3"
 NAME="preview"
+EXTRA="2018.json"
 
-./img2video_prepare.py img my/src30 -fs 30 --extra 2018.json --concat preview.txt --begin "$1" --end "$2"
-./img2video_prepare.py img my/src30 -fs 30 --extra 2018.json --concat preview.txt --begin "$1" --end "$2"
+mkdir -p my/src
+chmod 700 my
 
-ffmpeg -hide_banner -loglevel error \
-    -r 60 -f concat -i my/src30/preview.txt \
-    -pix_fmt yuv420p -vf fps=fps=30,scale=960:256 \
-    -c:v libx264 -b:v 900k -profile baseline -level 3.0 -preset slow -tune fastdecode -an \
-    -f mp4 -movflags +faststart -y "my/$NAME.mp4"
+for x in `seq 2`; do
+  "$PYTHON" -m pixel_battle img2video_prepare img my/src \
+    --begin "$1" --end "$2"
+done
 
-cp -Rpv "my/$NAME.mp4" "./$NAME.mp4"
-chmod a+r "./$NAME.mp4"
+python -m pixel_battle img2video --force my/src "my/$NAME.mp4" \
+  --format h264-baseline -p yuv420p -crf 21 -ir 60 -or 30 \
+  --extra "$EXTRA" --scale 960:-1 \
+  --begin "$1" --end "$2"
+
+cp -Rpv "my/$NAME.mp4" "$NAME.mp4"
+chmod a+r "$NAME.mp4"
