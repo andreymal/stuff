@@ -109,13 +109,17 @@ def sort_stat(stat, sort_by, reverse=True):
         raise ValueError('Unknown sorting method %r' % sort_by)
 
 
-def print_formatted_stat(allstat, file=sys.stdout):
+def print_formatted_stat(allstat, print_usernames=True, file=sys.stdout):
     for ip, stat in allstat:
+        if print_usernames:
+            userinfo = ' as ' + ', '.join(sorted(stat['usernames']))
+        else:
+            userinfo = ' as {} users'.format(len(stat['usernames']))
         print(
-            '{ip} ({count} tries as {usernames}; last {last})'.format(
+            '{ip} ({count} tries{userinfo}; last {last})'.format(
                 ip=ip,
                 count=stat['count'],
-                usernames=', '.join(sorted(stat['usernames'])),
+                userinfo=userinfo,
                 last=stat['last_date'].strftime('%Y-%m-%d %H:%M:%S'),
             ),
             file=file,
@@ -134,6 +138,8 @@ def main():
     parser.add_argument('-a', '--asc', action='store_true', help='sort ascending instead of descending')
     parser.add_argument('-i', '--onlyip', action='store_true', help='print only failed ips (good for scripts; success ips are not printed)')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose output (uses stderr)')
+    parser.add_argument('-U', '--no-failed-usernames', action='store_true', help='do not print failed usernames list to make a more compact output')
+    parser.add_argument('--no-ok-usernames', action='store_true', help='do not print success usernames list to make a more compact output')
 
     args = parser.parse_args(sys.argv[1:])
 
@@ -145,6 +151,8 @@ def main():
     mintries_failed = args.mintries_failed
     mintries_ok = args.mintries_ok
     onlyip = args.onlyip
+    print_failed_usernames = not args.no_failed_usernames
+    print_ok_usernames = not args.no_ok_usernames
     del parser, args
 
     if since:
@@ -186,13 +194,13 @@ def main():
     else:
         if fails:
             print('Failed:')
-            print_formatted_stat(fails)
+            print_formatted_stat(fails, print_usernames=print_failed_usernames)
             if oks:
                 print()
 
         if oks:
             print('Success:')
-            print_formatted_stat(oks)
+            print_formatted_stat(oks, print_usernames=print_ok_usernames)
 
     return 0
 
