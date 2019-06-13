@@ -1,4 +1,9 @@
-img/
-my/
+*.pyc
+__pycache__
+img
+my
+archive
+log
 *.mp4
+*.webm
 *.log
