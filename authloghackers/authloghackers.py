@@ -161,6 +161,8 @@ def main():
         elif since == 'yesterday':
             since = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             since -= timedelta(days=1)
+        elif 'T' not in since and ' ' not in since and since.count('-') == 2:
+            since = datetime.strptime(since.strip(), '%Y-%m-%d')
         else:
             since = datetime.strptime(since.strip().replace('T', ' '), '%Y-%m-%d %H:%M:%S')
 
