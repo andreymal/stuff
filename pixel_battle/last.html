@@ -16,6 +16,10 @@ html, body {
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 #pixelimg {
@@ -64,7 +68,7 @@ html, body {
 
 <div class="panzoom-wrap">
 <div class="panzoom">
-    <img id="pixelimg" src="https://home.andreymal.org/files/pixel_battle/img/last.png" width="1590" height="400" />
+    <img id="pixelimg" src="img/last.png" width="1590" height="400" />
 </div>
 </div>
 <div id="date">Loading...</div>
@@ -85,6 +89,8 @@ html, body {
 <script>
 'use strict';
 
+var imgUrl = 'img/';
+var origUrl = 'http://pixel.vkforms.ru/data/1.bmp';
 var oldSrc = null;
 var bmpnow = false;
 var scale = 0;
@@ -131,7 +137,7 @@ function configureAutoupdate() {
 
 function requestUpdate() {
     document.getElementById('updbtn').disabled = true;
-    fetch('https://home.andreymal.org/files/pixel_battle/img/last.json').then(function(response) {
+    fetch(imgUrl + 'last.json').then(function(response) {
         return response.json();
     }).then(function(data) {
         document.getElementById('updbtn').disabled = false;
@@ -146,7 +152,7 @@ function update(data) {
     var pixelimg = document.getElementById('pixelimg');
     var date = document.getElementById('date');
 
-    var src = 'https://home.andreymal.org/files/pixel_battle/img/' + data.last;
+    var src = imgUrl + (data.last_real || data.last);
     if (src !== oldSrc) {
         oldSrc = src;
         date.textContent = 'Loading...';
@@ -167,7 +173,6 @@ function update(data) {
     }
 }
 
-
 function forcereload() {
     var pixelimg = document.getElementById('pixelimg');
     var date = document.getElementById('date');
@@ -184,7 +189,7 @@ function forcereload() {
 
     pixelimg.onload = imgonload;
 
-    pixelimg.src = 'http://pixel.vkforms.ru/data/1.bmp?rnd=' + Math.random();
+    pixelimg.src = origUrl + '?rnd=' + Math.random();
     date.textContent = 'Loading ' + label + '...';
     pixelimg.style.opacity = '0.8';
     bmpnow = true;
@@ -192,7 +197,7 @@ function forcereload() {
 
 
 window.onload = function() {
-    if (window.location.toString().indexOf('http://') === 0 ){
+    if (window.location.toString().indexOf('http://') === 0){
         window.location = 'https://' + window.location.toString().substring(7);
         return;
     }
