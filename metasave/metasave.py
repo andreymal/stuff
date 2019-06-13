@@ -35,6 +35,8 @@ class MetaSave:
         hashers: Optional[Dict[str, Any]] = None,
         ignore_paths: Optional[Iterable[str]] = None,
         skip: Optional[Iterable[str]] = None,
+        acl: bool = False,
+        numeric_acl: bool = False,
     ):
         """
         :param list paths: список обрабатываемых путей (файлы или каталоги)
@@ -47,6 +49,8 @@ class MetaSave:
           или абсолютные)
         :param set skip: список названий ключей, которые следует не добавлять
           в результат (ctime, mtime, mode, uid, user, gid, group)
+        :param bool acl: читать POSIX ACL (используется библиотека pylibacl)
+        :param bool numeric_acl: хранить UID/GID вместо имён в ACL
         """
 
         if isinstance(paths, str):
@@ -60,6 +64,8 @@ class MetaSave:
         for x in ignore_paths or ():
             self._ignore_paths.add(os.path.abspath(os.path.join(self._root or '.', x)))
         self._skip = set(skip or ())  # type: Set[str]
+        self._acl = bool(acl)
+        self._numeric_acl = bool(numeric_acl)
 
         self._queue = self._collect_queue()  # type: List[str]
 
@@ -199,10 +205,30 @@ class MetaSave:
                 meta['group'] = None
         if 'mode' not in self._skip:
             meta['mode'] = stat.filemode(path_stat.st_mode)[1:]
+            assert len(meta['mode']) == 9
         if 'ctime' not in self._skip:
             meta['ctime'] = datetime.utcfromtimestamp(path_stat.st_ctime).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         if 'mtime' not in self._skip:
             meta['mtime'] = datetime.utcfromtimestamp(path_stat.st_mtime).strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+
+        if self._acl and 'acl' not in self._skip:
+            import posix1e
+
+            file_acl = posix1e.ACL(file=abspath)
+
+            # Смотрим, нужно ли вообще хранить ACL, или mode достаточно
+            need_acl = False
+            for e in file_acl:
+                if e.tag_type not in (posix1e.ACL_USER_OBJ, posix1e.ACL_GROUP_OBJ, posix1e.ACL_OTHER):
+                    need_acl = True
+                    break
+
+            # Если нужно, то пишем acl в строку
+            if need_acl:
+                acl_options = posix1e.TEXT_ABBREVIATE
+                if self._numeric_acl:
+                    acl_options |= posix1e.TEXT_NUMERIC_IDS
+                meta['acl'] = file_acl.to_any_text(separator=b',', options=acl_options).decode('utf-8')
 
         return meta
 
@@ -289,12 +315,14 @@ def main() -> int:
     parser.add_argument('-A', '--absolute', action='store_true', help='use absolute paths')
     parser.add_argument('-v', '--verbose', action='store_true', help='show progress and statistics in stderr')
     parser.add_argument('--jsonl', action='store_true', help='use JSON Lines format insted of single JSON object')
-    parser.add_argument('--skip', action='append', help='do not add some fields (ctime, mtime, mode, uid, user, gid, group)')
+    parser.add_argument('--skip', action='append', help='do not add some fields (ctime, mtime, mode, uid, user, gid, group, acl)')
     parser.add_argument('-I', '--ignore-path', action='append', help='do not process these paths (absolute or relative to current directory)')
     parser.add_argument('--stdout', action='store_true', help='duplicate output to stdout even if file is set')
     parser.add_argument('-a', '--append', action='store_true', help='append data to existing file')
     parser.add_argument('-w', '--overwrite', action='store_true', help='remove data from existing file and write only new data')
     parser.add_argument('-E', '--ignore-errors', action='store_true', help='ignore I/O and unicode errors')
+    parser.add_argument('--acl', action='store_true', help='Read POSIX ACL (requires pylibacl library)')
+    parser.add_argument('--numeric-acl', action='store_true', help='Save UID/GID instead of strings for POSIX ACL')
     parser.add_argument('--md5sum', action='store_true', help='calculate MD5 hashsum for files')
     parser.add_argument('--sha1sum', action='store_true', help='calculate SHA1 hashsum for files')
     parser.add_argument('--no-sha256sum', action='store_true', help='do not calculate SHA256 hashsum for files (calculated by default)')
@@ -310,6 +338,9 @@ def main() -> int:
             if args.append == args.overwrite:
                 print('Output path already exists! Please set "-a" or "-w" option.', file=sys.stderr)
                 return 2
+
+    if args.acl:
+        import posix1e
 
     # Собираем классы для хэширования
     hashers = {}  # type: Dict[str, Any]
@@ -336,7 +367,7 @@ def main() -> int:
 
     # Обрабатываем игнорируемые пути
     ignore_paths = set()  # type: Set[str]
-    for x in args.ignore or []:
+    for x in args.ignore_path or []:
         x = os.path.abspath(os.path.join(root or '.', x))
         if not os.path.exists(x):
             # Спасаем пользователя от возможных опечаток
@@ -353,6 +384,8 @@ def main() -> int:
         hashers=hashers,
         ignore_paths=ignore_paths,
         skip=skip,
+        acl=args.acl,
+        numeric_acl=args.numeric_acl,
     )
 
     old_meta = {}  # type: Dict[str, Any]
