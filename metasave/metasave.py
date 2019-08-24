@@ -37,6 +37,7 @@ class MetaSave:
         skip: Optional[Iterable[str]] = None,
         acl: bool = False,
         numeric_acl: bool = False,
+        follow_symlinks: bool = False,
     ):
         """
         :param list paths: список обрабатываемых путей (файлы или каталоги)
@@ -51,6 +52,9 @@ class MetaSave:
           в результат (ctime, mtime, mode, uid, user, gid, group)
         :param bool acl: читать POSIX ACL (используется библиотека pylibacl)
         :param bool numeric_acl: хранить UID/GID вместо имён в ACL
+        :args bool follow_symlinks: ходить ли по символьным ссылкам. Если True,
+          то файлы/каталоги, на которые ссылаются симлинки, будут считаться
+          обычными, и "type":"symlink" в в выводе не появится
         """
 
         if isinstance(paths, str):
@@ -66,6 +70,7 @@ class MetaSave:
         self._skip = set(skip or ())  # type: Set[str]
         self._acl = bool(acl)
         self._numeric_acl = bool(numeric_acl)
+        self._follow_symlinks = bool(follow_symlinks)
 
         self._queue = self._collect_queue()  # type: List[str]
 
@@ -126,11 +131,17 @@ class MetaSave:
             if abspath != os.path.abspath(path):
                 raise ValueError('Path must be absolute')
 
-        if os.path.islink(abspath):
-            return {
-                'type': 'symlink',
-                'to': os.readlink(abspath).replace(os.path.sep, '/'),
-            }
+        while os.path.islink(abspath):
+            if not self._follow_symlinks:
+                return {
+                    'type': 'symlink',
+                    'to': os.readlink(abspath).replace(os.path.sep, '/'),
+                }
+            # dereference
+            abspath = os.path.abspath(os.path.join(
+                os.path.split(abspath)[0],
+                os.readlink(abspath)
+            ))
 
         path_stat = os.stat(abspath)
 
@@ -323,6 +334,7 @@ def main() -> int:
     parser.add_argument('-E', '--ignore-errors', action='store_true', help='ignore I/O and unicode errors')
     parser.add_argument('--acl', action='store_true', help='Read POSIX ACL (requires pylibacl library)')
     parser.add_argument('--numeric-acl', action='store_true', help='Save UID/GID instead of strings for POSIX ACL')
+    parser.add_argument('-L', '--dereference', action='store_true', help='follow symlinks')
     parser.add_argument('--md5sum', action='store_true', help='calculate MD5 hashsum for files')
     parser.add_argument('--sha1sum', action='store_true', help='calculate SHA1 hashsum for files')
     parser.add_argument('--no-sha256sum', action='store_true', help='do not calculate SHA256 hashsum for files (calculated by default)')
@@ -355,6 +367,7 @@ def main() -> int:
     verbose = args.verbose  # type: bool
     jsonl = args.jsonl  # type: bool
     ignore_errors = args.ignore_errors  # type: bool
+    follow_symlinks = args.dereference  # type: bool
     root = None if args.absolute else os.path.abspath('.')  # type: Optional[str]
 
     # Собираем все skip'ы в единое множество
@@ -386,6 +399,7 @@ def main() -> int:
         skip=skip,
         acl=args.acl,
         numeric_acl=args.numeric_acl,
+        follow_symlinks=follow_symlinks,
     )
 
     old_meta = {}  # type: Dict[str, Any]
