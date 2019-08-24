@@ -128,23 +128,15 @@ class LastfmInput(TuneInput):
         data = bindata.decode('utf-8', 'replace')
 
         node = lxml.html.fragments_fromstring(data)[0]
-        now = node.xpath('//tr[contains(@class, "now-scrobbling")]')
+        now = node.xpath('//tr[contains(@class, "chartlist-row--now-scrobbling")]')
         if not now:
             self._last = None
             return None
 
         now = now[0]
 
-        # <a> — ссылка на трек есть
-        # <span> — ссылки на трек нет
-        # Не знаю, почему иногда не бывает ссылок
-
-        artist = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "chartlist-artists")]/a')
-        if not artist:
-            artist = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "chartlist-artists")]/span')
-        title = now.xpath('td[contains(@class, "chartlist-name")]/span/a')
-        if not title:
-            title = now.xpath('td[contains(@class, "chartlist-name")]/span/span[contains(@class, "link-block-target")]')
+        artist = now.xpath('td[contains(@class, "chartlist-artist")]/a')
+        title = now.xpath('td[contains(@class, "chartlist-name")]/a')
 
         youtube = now.xpath('td[contains(@class, "chartlist-play")]/a')
         youtube = youtube[0].get('data-youtube-id') if youtube else None
