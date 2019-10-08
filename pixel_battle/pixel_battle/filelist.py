@@ -4,7 +4,7 @@
 import os
 import sys
 import argparse
-from typing import Any, Optional, List, Dict
+from typing import Any, Dict
 
 from . import utils
 
@@ -26,11 +26,10 @@ def main(args: argparse.Namespace) -> int:
     sourcedir = os.path.abspath(args.sourcedir)
 
     # Собираем список всех доступных картинок
-    filelist: Optional[List[str]] = utils.find_images(sourcedir)
-    assert filelist is not None  # deal with mypy
+    filelist_full = utils.find_images(sourcedir)
 
     # Урезаем его, если попросили
-    filelist = utils.slice_filelist(filelist, args.begin, args.end)
+    filelist = utils.slice_filelist(filelist_full, args.begin, args.end)
     if filelist is None:
         return 1
 

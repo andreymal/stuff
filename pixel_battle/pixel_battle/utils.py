@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
 
-filename_re = re.compile(r"^[12][0-9]{3}-[01][0-9]-[0-3][0-9]_[0-2][0-9]-[0-6][0-9]-[0-6][0-9]")
+filename_re = re.compile(r"^([12][0-9]{3})-([01][0-9])-([0-3][0-9])_([0-2][0-9])-([0-6][0-9])-([0-6][0-9])")
 
 
 def sha256sum(data: Union[bytes, BinaryIO]) -> str:
@@ -20,14 +20,14 @@ def sha256sum(data: Union[bytes, BinaryIO]) -> str:
 
     h = sha256()
     while True:
-        chunk = data.read(4096)
+        chunk = data.read(65536)
         if not chunk:
             break
         h.update(chunk)
     return h.hexdigest()
 
 
-def rgb_sha256sum(im: Union[str, 'Image.Image']) -> str:
+def rgb_sha256sum(im: Union[str, "Image.Image"]) -> str:
     from PIL import Image
 
     if isinstance(im, str):
@@ -51,8 +51,13 @@ def get_sleep_time(interval: int = 30) -> float:
 
 
 def find_images(sourcedir: str) -> List[str]:
+    """Ищет в каталоге и его подкаталогах все файлы с датой в имени
+    и возвращает список путей к ним, отсортированный по именам файлов
+    (имена каталогов в сортировке не учитываются).
+    """
     sourcedir = os.path.abspath(sourcedir)
     prefix = os.path.join(sourcedir, "")
+    assert prefix.endswith(os.path.sep)
 
     filelist: List[str] = []
     for subpath, _, files in os.walk(sourcedir):
@@ -73,6 +78,10 @@ def slice_filelist(
     begin: Optional[str] = None,
     end: Optional[str] = None,
 ) -> Optional[List[str]]:
+    """Из списка файлов, полученного функцией find_images, делает срез
+    от первого до последнего указанного файла. Если что-то не нашлось,
+    возвращает None.
+    """
     if begin:
         try:
             f = filelist.index(begin)

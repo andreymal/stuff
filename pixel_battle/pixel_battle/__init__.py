@@ -6,4 +6,4 @@
 # copyright © 2019 andreymal
 # License: MIT
 
-__version__ = "0.3"
+__version__ = "0.3.1"

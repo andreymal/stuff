@@ -107,13 +107,17 @@ def main(args: argparse.Namespace) -> int:
 
     # Собираем команду ffmpeg
     ffmpeg_cmd: List[str] = list(shlex.split(args.ffmpeg))
+
+    # Эта опция предотвращает появление дубликатов кадров, если в исходном
+    # видео частота кадров переменная
+    ffmpeg_cmd += ["-vsync", "passthrough"]
+
     ffmpeg_cmd += [
         "-i", os.path.abspath(args.source),
         "-pix_fmt", "rgb24",
     ]
     if video_filters:
-        ffmpeg_cmd.append("-vf")
-        ffmpeg_cmd += video_filters
+        ffmpeg_cmd.extend(["-vf", ",".join(video_filters)])
     ffmpeg_cmd += [
         "-f", "rawvideo",
         "pipe:1",
@@ -153,15 +157,12 @@ def main(args: argparse.Namespace) -> int:
             if not filelist:
                 if args.end:
                     break
-                else:
-                    print("Unexpected extra frame from ffmpeg!")
-                    return 1
+                print("Unexpected extra frame from ffmpeg!")
+                return 1
 
             frameno += 1
             if frameno < skip_frames:
                 continue
-
-            rgb_hash = utils.sha256sum(framedata)
 
             # Забираем название этого файла из нашего типа-стека
             filepath = filelist.pop()
@@ -173,6 +174,8 @@ def main(args: argparse.Namespace) -> int:
                 ext = os.path.splitext(filepath)[1].lower().lstrip(".")
             print(filepath, end="", flush=True)
 
+            rgb_hash = utils.sha256sum(framedata)
+
             fileabspath = os.path.join(destdir, filepath)
 
             # Кодируем с помщью Pillow и сохраняем, если его ещё не существует
@@ -183,6 +186,7 @@ def main(args: argparse.Namespace) -> int:
 
                 # Если разрешают делать симлинки, то делаем, если кадр такой же
                 if args.use_symlinks and rgb_hash == prev_rgb_hash:
+                    assert prev_fileabspath
                     link_to = os.path.relpath(prev_fileabspath, os.path.dirname(fileabspath))
                     os.symlink(link_to, fileabspath)
 
@@ -206,7 +210,7 @@ def main(args: argparse.Namespace) -> int:
                     prev_rgb_hash = rgb_hash
                     prev_fileabspath = fileabspath
 
-            print()
+            print("", flush=True)
 
         try:
             ffmpeg.stdin.write(b"q")

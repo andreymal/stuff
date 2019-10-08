@@ -10,7 +10,7 @@ import traceback
 from io import BytesIO
 from datetime import datetime
 from urllib.request import Request, urlopen
-from typing import Any, Optional, List, Dict, TextIO
+from typing import Any, Optional, Tuple, List, Dict, TextIO
 import dataclasses
 from dataclasses import dataclass
 
@@ -20,7 +20,7 @@ from . import utils
 
 
 default_url = "http://pixel.vkforms.ru/data/1.bmp"
-user_agent = "Mozilla/5.0; pixel_battle/0.3 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
+user_agent = "Mozilla/5.0; pixel_battle/0.3.1 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
 
@@ -34,7 +34,6 @@ class PixelBattleState:
         self.last_image = None
         self.last_rgb_sha256sum = None
         self.last_symlinks.clear()
-
 
     def validate_last_image(self, root: str) -> None:
         if not self.last_image:
@@ -63,10 +62,16 @@ class PixelBattleState:
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as fp:
-            json.dump(dataclasses.asdict(self), fp, ensure_ascii=False, sort_keys=True, indent=2)
+            json.dump(
+                dataclasses.asdict(self),
+                fp,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
 
 
-state = PixelBattleState()
+global_state = PixelBattleState()
 
 
 def download(
@@ -112,7 +117,13 @@ def grab(
     saveopts: Optional[Dict[str, Any]] = None,
     last_filename: Optional[str] = "last.png",
     json_filename: Optional[str] = "last.json",
-) -> None:
+    directory_mode: Optional[int] = None,
+    file_mode: Optional[int] = None,
+    state: Optional[PixelBattleState] = None,
+) -> Tuple[Optional[str], Optional[str]]:
+    if state is None:
+        state = global_state
+
     # Генерируем имя сохраняемой картинки
     tm = datetime.utcnow()  # UTC
     tm_local = datetime.now()  # local timezone
@@ -140,7 +151,7 @@ def grab(
     orig_data: Optional[bytes] = download(url, maxsize)
     if orig_data is None:
         log("fail!", tm=False)
-        return
+        return None, None
 
     log("save...", tm=False, end=" ")
 
@@ -177,7 +188,8 @@ def grab(
     dirpath = os.path.dirname(path)
     if not os.path.isdir(dirpath):
         os.makedirs(dirpath)
-        os.chmod(dirpath, 0o755)
+        if directory_mode is not None:
+            os.chmod(dirpath, directory_mode)
 
     if symlink_to:
         # Если картинка уже была, то делаем симлинк
@@ -191,7 +203,8 @@ def grab(
         # Если не было — создаём и запоминаем новый файл
         with open(path, "wb") as fp:
             fp.write(data)
-        os.chmod(path, 0o644)
+        if file_mode is not None:
+            os.chmod(path, file_mode)
         state.last_image = filename
         state.last_rgb_sha256sum = rgb_hash
         # Старый список симлинков чистим, так как удалять дубликаты
@@ -203,19 +216,22 @@ def grab(
     assert file_hash
 
     # Пилим симлинк на последнюю доступную версию
+    # (путём создания временного файла и перемещения, чтоб атомарно было)
     if last_filename is not None:
         last_path = os.path.join(root, last_filename)
-        if os.path.islink(last_path):
-            os.unlink(last_path)
-        elif os.path.exists(last_path):
-            os.remove(last_path)
+        last_path_tmp = last_path + ".tmp"
+        if os.path.exists(last_path_tmp):
+            os.remove(last_path_tmp)
         actual_last_link_to = os.path.relpath(path, os.path.dirname(last_path))
-        os.symlink(actual_last_link_to, last_path)
+        os.symlink(actual_last_link_to, last_path_tmp)
+        os.rename(last_path_tmp, last_path)
 
     # Пилим json-файл про последнюю доступную версию (для удобства всяких аяксов)
+    # (тоже атомарно)
     if json_filename is not None:
         json_path = os.path.join(root, json_filename)
-        with open(json_path, "w", encoding="utf-8") as fp1:
+        json_path_tmp = json_path + ".tmp"
+        with open(json_path_tmp, "w", encoding="utf-8") as fp1:
             json.dump({
                 "last": filename,
                 "last_real": state.last_image,
@@ -224,7 +240,9 @@ def grab(
                 "sha256sum": file_hash,
                 "rgb_sha256sum": rgb_hash,
             }, fp1, ensure_ascii=False, sort_keys=True, indent=2)
-        os.chmod(json_path, 0o644)
+        if file_mode is not None:
+            os.chmod(json_path_tmp, file_mode)
+        os.rename(json_path_tmp, json_path)
 
     if symlink_to is not None:
         log("symlink to {} ok ({}/{})".format(
@@ -235,12 +253,18 @@ def grab(
             file_hash[:6], state.last_rgb_sha256sum[:6]
         ), tm=False)
 
+    return filename, symlink_to
+
 
 def clear_old_symlinks(
     root: str,
     max_symlinks_count: int,
     delete_empty_directories: bool = True,
+    state: Optional[PixelBattleState] = None,
 ) -> int:
+    if state is None:
+        state = global_state
+
     if max_symlinks_count < 1 or len(state.last_symlinks) <= max_symlinks_count:
         return 0
 
@@ -308,15 +332,20 @@ def get_argparser_args() -> Dict[str, Any]:
 def configure_argparse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--url", help="image URL (default: {})".format(default_url), default=default_url)
     parser.add_argument("--use-symlinks", default=False, action="store_true", help="Use symlinks to deduplicate files")
+    parser.add_argument("--max-symlinks-count", type=int, default=1440, help="maximum number of symlinks pointing to the same file (0 is infinity; default: 1440)")
     parser.add_argument("-S", "--maxsize", type=float, default=5.0, help="max image size in MiB (default: 5.0)")
     parser.add_argument("-i", "--interval", type=int, default=30, help="interval between grabs in seconds (default: 30)")
     parser.add_argument("-l", "--log", default=None, help="copy stdout to this file")
     parser.add_argument("-F", "--saveopts", help="save options for PIL.Image.save (JSON, default: auto)")
+    parser.add_argument("-U", "--umask", default=None, help="set umask (022 is recommended)")
     parser.add_argument("directory", metavar="DIRECTORY", help="output directory")
 
 
 def main(args: argparse.Namespace) -> int:
-    global state, log_fp
+    global global_state, log_fp
+
+    if args.umask:
+        os.umask(int(args.umask, 8))
 
     saveopts: Optional[Dict[str, Any]] = None
     if args.saveopts is not None:
@@ -334,7 +363,7 @@ def main(args: argparse.Namespace) -> int:
 
     # Если будут сплошные симлинки много часов подряд, то избытки из середины
     # списка станут удаляться
-    max_symlinks_count = 1440
+    max_symlinks_count = args.max_symlinks_count
 
     if args.log:
         log_fp = open(args.log, "a", encoding="utf-8", newline="")
@@ -355,6 +384,9 @@ def main(args: argparse.Namespace) -> int:
             with open(state_path, "r", encoding="utf-8-sig") as fp:
                 state = PixelBattleState(**dict(json.load(fp)))
             state.validate(root)
+            global_state = state
+        else:
+            state = global_state
 
         # Ждём момента, когда можно начать качать картинку
         log("Sleeping {:.1f}s before first grab".format(
@@ -363,7 +395,7 @@ def main(args: argparse.Namespace) -> int:
         try:
             time.sleep(utils.get_sleep_time(interval) + 0.05)
         except (KeyboardInterrupt, SystemExit):
-            log("pixel_grabber finished")
+            log("pixel_battle grabber finished")
             return 0
 
         # И качаем в вечном цикле
@@ -376,8 +408,9 @@ def main(args: argparse.Namespace) -> int:
                     maxsize,
                     use_symlinks=use_symlinks,
                     saveopts=saveopts,
+                    state=state,
                 )
-                clear_old_symlinks(root, max_symlinks_count)
+                clear_old_symlinks(root, max_symlinks_count, state=state)
                 state.save(state_path)
             except (KeyboardInterrupt, SystemExit):
                 log("Interrupted!", tm=False)
