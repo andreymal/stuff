@@ -1,20 +1,14 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 set -e
-umask 0022
 
-PYTHON="python3"
+. env.sh
+
 NAME="timelapse_2018-10-10_fast"
-BEGIN=""
-END="2018-10-13_00/2018-10-13_00-10-00.png"
-EXTRA="2018.json"
-
-mkdir -p my/src
-chmod 700 my
 
 for x in `seq 2`; do
   "$PYTHON" -m pixel_battle.img2video_prepare img my/src \
-    --begin "$BEGIN" --end "$END"
+    --begin "$BEGIN" --end "$END" --extra "$EXTRA"
 done
 
 python -m pixel_battle.img2video --force my/src "my/$NAME.mp4" \
