@@ -187,8 +187,12 @@ def main(args: argparse.Namespace) -> int:
                 # Если разрешают делать симлинки, то делаем, если кадр такой же
                 if args.use_symlinks and rgb_hash == prev_rgb_hash:
                     assert prev_fileabspath
-                    link_to = os.path.relpath(prev_fileabspath, os.path.dirname(fileabspath))
-                    os.symlink(link_to, fileabspath)
+                    if fileabspath != prev_fileabspath: # Могут совпадать при --force
+                        link_to = os.path.relpath(
+                            prev_fileabspath,
+                            os.path.dirname(fileabspath),
+                        )
+                        os.symlink(link_to, fileabspath)
 
                 else:
                     file_saveopts = saveopts
