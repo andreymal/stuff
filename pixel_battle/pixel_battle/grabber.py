@@ -21,7 +21,7 @@ from . import utils
 
 default_url = "https://pixel.w84.vkforms.ru/api/data/4"
 default_top_url = "https://pixel.w84.vkforms.ru/api/top"
-user_agent = "Mozilla/5.0; pixel_battle/0.3.2 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
+user_agent = "Mozilla/5.0; pixel_battle/0.3.3 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
 
@@ -132,10 +132,18 @@ def grab(
     json_filename: Optional[str] = "last.json",
     directory_mode: Optional[int] = None,
     file_mode: Optional[int] = None,
+    randomize_urls: bool = True,
     state: Optional[PixelBattleState] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     if state is None:
         state = global_state
+
+    # Обходим кривое кэширование на стороне сервера
+    if randomize_urls:
+        rnd = str(time.time())
+        url += ("&" if "?" in url else "?") + rnd
+        if top_url:
+            top_url += ("&" if "?" in top_url else "?") + rnd
 
     # Генерируем имя сохраняемых файлов
     tm = datetime.utcnow()  # UTC
