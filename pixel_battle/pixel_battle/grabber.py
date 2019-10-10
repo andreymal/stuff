@@ -19,8 +19,8 @@ from PIL import Image
 from . import utils
 
 
-default_url = "https://pixel.w84.vkforms.ru/api/data/16"
-default_top_url = "https://pixel.w84.vkforms.ru/api/top"
+default_url = "https://pixel2019.vkforms.ru/api/data/16"
+default_top_url = "https://pixel2019.vkforms.ru/api/top"
 user_agent = "Mozilla/5.0; pixel_battle/0.3.3 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
@@ -100,7 +100,7 @@ def download(
         try:
             data = urlopen(r, timeout=timeout).read(maxsize + 1)
         except Exception as exc:
-            log(str(exc), tm=False, end=" ")
+            log(str(exc), tm=False, end="; ")
             if trynum >= tries - 1:
                 return None
         else:
@@ -183,23 +183,32 @@ def grab(
     assert saveopts is not None
 
     # Скачиваем пиксели (они отдаются в виде текстовых символов)
-    log("grab image...", tm=False, end=" ")
+    log("[im:", tm=False, end=" ")
     orig_data_bin: Optional[bytes] = download(url, maxsize)
     if orig_data_bin is None:
-        log("fail!", tm=False)
+        log("fail]", tm=False)
         return None, None
+    log("ok]", tm=False, end=" ")
     orig_data: str = orig_data_bin.decode("utf-8")
+
+    # Запоминаем реальное время скачивания
+    im_unixtime = time.time()
 
     # Сразу скачиваем топ
     top_data_bin: Optional[bytes] = None
     if top_url is not None:
-        log("grab top...", tm=False, end=" ")
-        top_data_bin = download(top_url, maxsize)
+        log("[top:", tm=False, end=" ")
+        top_data_bin = download(top_url, maxsize, timeout=1)
         if top_data_bin is None:
-            log("top fail!", tm=False, end=" ")
+            log("fail]", tm=False, end=" ")
+        else:
+            log("ok]", tm=False, end=" ")
+
+    # Запоминаем реальное время скачивания
+    top_unixtime = time.time()
 
     # Декодируем текстовые символы в нормальные цвета
-    log("decode...", tm=False, end=" ")
+    log("[decode:", tm=False, end=" ")
     imglen = state.width * state.height
     imgdata = orig_data[:imglen]  # Откусываем JSON-мусор (снежинки) в конце
     metadata = orig_data[imglen:].strip()
@@ -210,8 +219,9 @@ def grab(
         log("WARNING: unexpected extra data")
 
     img_rgb = utils.decode_image(imgdata, state.palette)
+    log("ok]", tm=False, end=" ")
 
-    log("save...", tm=False, end=" ")
+    log("[save:", tm=False, end=" ")
 
     symlink_to: Optional[str] = None
     data = b""
@@ -263,6 +273,7 @@ def grab(
         # Если не было — создаём и запоминаем новый файл
         with open(path, "wb") as fp:
             fp.write(data)
+        os.utime(path, (im_unixtime, im_unixtime))
         if file_mode is not None:
             os.chmod(path, file_mode)
         state.last_image = filename
@@ -313,6 +324,7 @@ def grab(
         else:
             with open(os.path.join(root, filename_meta), "w", encoding="utf-8") as tfp:
                 tfp.write(metadata)
+            os.utime(os.path.join(root, filename_meta), (im_unixtime, im_unixtime))
 
     if filename_top and top_data_bin:
         try:
@@ -322,13 +334,14 @@ def grab(
         else:
             with open(os.path.join(root, filename_top), "wb") as fp:
                 fp.write(top_data_bin)
+            os.utime(os.path.join(root, filename_top), (top_unixtime, top_unixtime))
 
     if symlink_to is not None:
-        log("symlink to {} ok ({}/{})".format(
+        log("ok] symlink to {} ({}/{})".format(
             os.path.split(symlink_to)[-1], file_hash[:6], state.last_rgb_sha256sum[:6]
         ), tm=False)
     else:
-        log("ok ({}/{})".format(
+        log("ok] ({}/{})".format(
             file_hash[:6], state.last_rgb_sha256sum[:6]
         ), tm=False)
 
