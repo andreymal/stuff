@@ -19,7 +19,7 @@ from PIL import Image
 from . import utils
 
 
-default_url = "https://pixel.w84.vkforms.ru/api/data/4"
+default_url = "https://pixel.w84.vkforms.ru/api/data/16"
 default_top_url = "https://pixel.w84.vkforms.ru/api/top"
 user_agent = "Mozilla/5.0; pixel_battle/0.3.3 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
