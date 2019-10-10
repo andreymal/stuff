@@ -20,7 +20,8 @@ from . import utils
 
 
 default_url = "https://pixel.w84.vkforms.ru/api/data/4"
-user_agent = "Mozilla/5.0; pixel_battle/0.3.1 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
+default_top_url = "https://pixel.w84.vkforms.ru/api/top"
+user_agent = "Mozilla/5.0; pixel_battle/0.3.2 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
 
@@ -36,31 +37,31 @@ class PixelBattleState:
     width: int = 1590
     height: int = 400
 
-    def clear_last(self) -> None:
+    def clear_last_image(self) -> None:
         self.last_image = None
         self.last_rgb_sha256sum = None
         self.last_symlinks.clear()
 
     def validate_last_image(self, root: str) -> None:
         if not self.last_image:
-            self.clear_last()
+            self.clear_last_image()
             return
 
         last_image = os.path.join(root, self.last_image)
         if not os.path.isfile(last_image) or os.path.islink(last_image):
-            self.clear_last()
+            self.clear_last_image()
             log("Last image {!r} not found, ignored".format(last_image))
             return
 
         try:
             h = utils.rgb_sha256sum(last_image)
         except Exception:
-            self.clear_last()
+            self.clear_last_image()
             log("Last image {!r} cannot be read, ignored".format(last_image))
             return
 
         if h != self.last_rgb_sha256sum:
-            self.clear_last()
+            self.clear_last_image()
             log("Last image {!r} was changed, ignored".format(last_image))
 
     def validate(self, root: str) -> None:
@@ -85,20 +86,19 @@ global_state = PixelBattleState()
 def download(
     url: str,
     maxsize: int = 5 * 1024 * 1024,
-    tries: int = 3,
-    tries_interval: float = 1.5,
+    tries: int = 2,
+    tries_interval: float = 0.5,
+    timeout: int = 2,
 ) -> Optional[bytes]:
     # Готовим HTTP-запрос
     r = Request(url)
     r.add_header("User-Agent", user_agent)
 
-    log("grab...", tm=False, end=" ")
-
-    # Пытаемся скачать в три попытки, а то иногда бывает ошибка 502
+    # Пытаемся скачать в пять попыток, а то иногда бывает ошибка 502
     data = b""
     for trynum in range(tries):
         try:
-            data = urlopen(r, timeout=10).read(maxsize + 1)
+            data = urlopen(r, timeout=timeout).read(maxsize + 1)
         except Exception as exc:
             log(str(exc), tm=False, end=" ")
             if trynum >= tries - 1:
@@ -115,12 +115,17 @@ def download(
 
 
 def grab(
-    url: str,
     root: str,
+    url: str,
+    top_url: Optional[str] = None,
     maxsize: int = 5 * 1024 * 1024,
     use_symlinks: bool = False,
     filename: Optional[str] = None,
     filename_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S.png",
+    filename_meta: Optional[str] = None,
+    filename_meta_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_meta.txt",
+    filename_top: Optional[str] = None,
+    filename_top_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_top.txt",
     filename_utc: bool = False,
     saveopts: Optional[Dict[str, Any]] = None,
     last_filename: Optional[str] = "last.png",
@@ -132,14 +137,27 @@ def grab(
     if state is None:
         state = global_state
 
-    # Генерируем имя сохраняемой картинки
+    # Генерируем имя сохраняемых файлов
     tm = datetime.utcnow()  # UTC
     tm_local = datetime.now()  # local timezone
+
     if not filename:
         if filename_utc:
             filename = tm.strftime(filename_format)
         else:
             filename = tm_local.strftime(filename_format)
+
+    if not filename_meta and filename_meta_format:
+        if filename_utc:
+            filename_meta = tm.strftime(filename_meta_format)
+        else:
+            filename_meta = tm_local.strftime(filename_meta_format)
+
+    if not filename_top and filename_top_format:
+        if filename_utc:
+            filename_top = tm.strftime(filename_top_format)
+        else:
+            filename_top = tm_local.strftime(filename_top_format)
 
     # Определяемся с форматом сохраняемой картинки
     ext = os.path.splitext(filename)[-1].lower().lstrip(".")
@@ -157,16 +175,26 @@ def grab(
     assert saveopts is not None
 
     # Скачиваем пиксели (они отдаются в виде текстовых символов)
+    log("grab image...", tm=False, end=" ")
     orig_data_bin: Optional[bytes] = download(url, maxsize)
     if orig_data_bin is None:
         log("fail!", tm=False)
         return None, None
     orig_data: str = orig_data_bin.decode("utf-8")
 
+    # Сразу скачиваем топ
+    top_data_bin: Optional[bytes] = None
+    if top_url is not None:
+        log("grab top...", tm=False, end=" ")
+        top_data_bin = download(top_url, maxsize)
+        if top_data_bin is None:
+            log("top fail!", tm=False, end=" ")
+
     # Декодируем текстовые символы в нормальные цвета
     log("decode...", tm=False, end=" ")
     imglen = state.width * state.height
-    imgdata = orig_data[:imglen]  # Откусываем JSON-мусор в конце
+    imgdata = orig_data[:imglen]  # Откусываем JSON-мусор (снежинки) в конце
+    metadata = orig_data[imglen:].strip()
     if len(imgdata) < imglen:
         log("WARNING: truncated image!", tm=False, end=" ")
         imgdata += "_" * (imglen - len(imgdata))
@@ -268,6 +296,25 @@ def grab(
             os.chmod(json_path_tmp, file_mode)
         os.rename(json_path_tmp, json_path)
 
+    # Заодно сохраняем мету (информацию о замороженных точках) и топ
+    if filename_meta and metadata:
+        try:
+            metadata_decoded: List[Any] = list(json.loads(metadata))
+        except Exception:
+            log("(invalid meta)", tm=False, end=" ")
+        else:
+            with open(os.path.join(root, filename_meta), "w", encoding="utf-8") as tfp:
+                tfp.write(metadata)
+
+    if filename_top and top_data_bin:
+        try:
+            top_data_decoded: Dict[str, Any] = dict(json.loads(top_data_bin.decode("utf-8")))
+        except Exception:
+            log("(invalid top)", tm=False, end=" ")
+        else:
+            with open(os.path.join(root, filename_top), "wb") as fp:
+                fp.write(top_data_bin)
+
     if symlink_to is not None:
         log("symlink to {} ok ({}/{})".format(
             os.path.split(symlink_to)[-1], file_hash[:6], state.last_rgb_sha256sum[:6]
@@ -354,8 +401,9 @@ def get_argparser_args() -> Dict[str, Any]:
 
 
 def configure_argparse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--url", help="image data URL (default: {})".format(default_url), default=default_url)
     parser.add_argument("-p", "--palette", required=True, help="palette file (json)")
+    parser.add_argument("--url", help="image data URL (default: {})".format(default_url), default=default_url)
+    parser.add_argument("--top-url", help="top data URL (default: {})".format(default_top_url), default=default_top_url)
     parser.add_argument("--use-symlinks", default=False, action="store_true", help="Use symlinks to deduplicate files")
     parser.add_argument("--max-symlinks-count", type=int, default=1440, help="maximum number of symlinks pointing to the same file (0 is infinity; default: 1440)")
     parser.add_argument("-S", "--maxsize", type=float, default=5.0, help="max image size in MiB (default: 5.0)")
@@ -385,6 +433,7 @@ def main(args: argparse.Namespace) -> int:
     maxsize = int(args.maxsize * 1024.0 * 1024.0)
     use_symlinks = bool(args.use_symlinks)
     url = args.url
+    top_url = args.top_url
 
     # Если будут сплошные симлинки много часов подряд, то избытки из середины
     # списка станут удаляться
@@ -431,8 +480,9 @@ def main(args: argparse.Namespace) -> int:
             log("", tm=True, end="")
             try:
                 grab(
-                    url,
                     root,
+                    url,
+                    top_url,
                     maxsize,
                     use_symlinks=use_symlinks,
                     saveopts=saveopts,
