@@ -100,6 +100,9 @@ def find_images(sourcedir: str) -> List[str]:
     for subpath, _, files in os.walk(sourcedir):
         assert subpath == sourcedir or subpath.startswith(prefix)
         for f in files:
+            ext = os.path.splitext(f)[-1].lower()
+            if ext in (".txt", ".md", ".rst", ".sh", ".json", ".bin", ".htm", ".html"):
+                continue
             if not filename_re.search(f):
                 continue
             filelist.append(os.path.join(subpath[len(prefix):], f))
