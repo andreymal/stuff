@@ -3,15 +3,52 @@
 
 import os
 import re
+import json
 import time
+import binascii
 from hashlib import sha256
-from typing import Optional, Union, List, BinaryIO, TYPE_CHECKING
+from typing import Optional, Union, Set, List, Dict, BinaryIO, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from PIL import Image
 
 
 filename_re = re.compile(r"^([12][0-9]{3})-([01][0-9])-([0-3][0-9])_([0-2][0-9])-([0-6][0-9])-([0-6][0-9])")
+
+
+def read_palette(path: str) -> Dict[str, bytes]:
+    with open(path, "r", encoding="utf-8-sig") as fp:
+        data: Dict[str, str] = dict(json.load(fp))
+    result: Dict[str, bytes] = {}
+
+    for x, hexcolor in data.items():
+        bincolor: bytes = binascii.unhexlify(hexcolor)
+        if len(bincolor) != 3:
+            raise ValueError("Invalid color {!r}".format(hexcolor))
+        if len(x) != 1:
+            raise ValueError("Invalid color key {!r}".format(x))
+        result[x] = bincolor
+
+    return result
+
+
+def decode_image(data: str, palette: Dict[str, bytes]) -> bytes:
+    unknown_colors: Set[str] = set()
+
+    result = bytearray()
+    for x in data:
+        c = palette.get(x)
+        if c is not None:
+            result.extend(c)
+        else:
+            unknown_colors.add(x)
+            result.extend(palette.get("_", b"\xff\x00\xff"))
+
+    if unknown_colors:
+        print("WARNING: there are {} unknown colors: {!r}".format(len(unknown_colors), unknown_colors))
+
+    assert len(result) == len(data) * 3
+    return bytes(result)
 
 
 def sha256sum(data: Union[bytes, BinaryIO]) -> str:

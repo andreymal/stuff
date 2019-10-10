@@ -19,7 +19,7 @@ from PIL import Image
 from . import utils
 
 
-default_url = "http://pixel.vkforms.ru/data/1.bmp"
+default_url = "https://pixel.w84.vkforms.ru/api/data/4"
 user_agent = "Mozilla/5.0; pixel_battle/0.3.1 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
@@ -28,7 +28,13 @@ log_fp: Optional[TextIO] = None
 class PixelBattleState:
     last_image: Optional[str] = None  # Никогда не бывает симлинком, а путь всегда относительный
     last_rgb_sha256sum: Optional[str] = None
-    last_symlinks: List[str] = dataclasses.field(default_factory=list)  # Список относительных путей
+    # Список относительных путей к симлинкам
+    last_symlinks: List[str] = dataclasses.field(default_factory=list)
+    # Палитра для преобразвания букв в цвета
+    palette: Dict[str, bytes] = dataclasses.field(default_factory=lambda: {"_": b"\xff\x00\xff"})
+    # Размеры читаемой картинки
+    width: int = 1590
+    height: int = 400
 
     def clear_last(self) -> None:
         self.last_image = None
@@ -61,9 +67,11 @@ class PixelBattleState:
         self.validate_last_image(root)
 
     def save(self, path: str) -> None:
+        data = dataclasses.asdict(self)
+        data.pop("palette")
         with open(path, "w", encoding="utf-8") as fp:
             json.dump(
-                dataclasses.asdict(self),
+                data,
                 fp,
                 ensure_ascii=False,
                 sort_keys=True,
@@ -148,10 +156,24 @@ def grab(
             saveopts = {"format": "BMP"}
     assert saveopts is not None
 
-    orig_data: Optional[bytes] = download(url, maxsize)
-    if orig_data is None:
+    # Скачиваем пиксели (они отдаются в виде текстовых символов)
+    orig_data_bin: Optional[bytes] = download(url, maxsize)
+    if orig_data_bin is None:
         log("fail!", tm=False)
         return None, None
+    orig_data: str = orig_data_bin.decode("utf-8")
+
+    # Декодируем текстовые символы в нормальные цвета
+    log("decode...", tm=False, end=" ")
+    imglen = state.width * state.height
+    imgdata = orig_data[:imglen]  # Откусываем JSON-мусор в конце
+    if len(imgdata) < imglen:
+        log("WARNING: truncated image!", tm=False, end=" ")
+        imgdata += "_" * (imglen - len(imgdata))
+    elif len(orig_data) > imglen and orig_data[imglen] != "[":
+        log("WARNING: unexpected extra data")
+
+    img_rgb = utils.decode_image(imgdata, state.palette)
 
     log("save...", tm=False, end=" ")
 
@@ -159,12 +181,14 @@ def grab(
     data = b""
     file_hash = ""
 
-    with Image.open(BytesIO(orig_data)) as im:
-        if im.mode != "RGB":
-            raise NotImplementedError("Unsupported image mode: {!r}".format(im.mode))
+    with Image.frombytes("RGB", (state.width, state.height), img_rgb) as im:
+        # if im.mode != "RGB":
+        #     raise NotImplementedError("Unsupported image mode: {!r}".format(im.mode))
 
         # Считаем хэш содержимого (не bmp-файла, а именно содержимого пикселей в RGB)
-        rgb_hash = utils.rgb_sha256sum(im)
+        # rgb_hash = utils.rgb_sha256sum(im)
+        rgb_hash = utils.sha256sum(img_rgb)
+        assert rgb_hash == utils.rgb_sha256sum(im)
 
         if (
             use_symlinks and state.last_rgb_sha256sum == rgb_hash and
@@ -330,7 +354,8 @@ def get_argparser_args() -> Dict[str, Any]:
 
 
 def configure_argparse(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--url", help="image URL (default: {})".format(default_url), default=default_url)
+    parser.add_argument("--url", help="image data URL (default: {})".format(default_url), default=default_url)
+    parser.add_argument("-p", "--palette", required=True, help="palette file (json)")
     parser.add_argument("--use-symlinks", default=False, action="store_true", help="Use symlinks to deduplicate files")
     parser.add_argument("--max-symlinks-count", type=int, default=1440, help="maximum number of symlinks pointing to the same file (0 is infinity; default: 1440)")
     parser.add_argument("-S", "--maxsize", type=float, default=5.0, help="max image size in MiB (default: 5.0)")
@@ -388,6 +413,9 @@ def main(args: argparse.Namespace) -> int:
         else:
             state = global_state
 
+        # Загружаем палитру из файла
+        state.palette = utils.read_palette(args.palette)
+
         # Ждём момента, когда можно начать качать картинку
         log("Sleeping {:.1f}s before first grab".format(
                 utils.get_sleep_time(interval)
@@ -424,7 +452,7 @@ def main(args: argparse.Namespace) -> int:
             except (KeyboardInterrupt, SystemExit):
                 break
 
-        log("pixel_grabber finished")
+        log("pixel_battle grabber finished")
 
     finally:
         if log_fp is not None:
