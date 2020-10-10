@@ -11,13 +11,17 @@ def get_argparser_args() -> Dict[str, Any]:
 
 
 def configure_argparse(parser: argparse.ArgumentParser) -> None:
-    from . import grabber, ws, img2video_prepare, img2video, video2img, filelist
+    from . import grabber, decode_image, ws, img2video_prepare, img2video, video2img, filelist
 
     subparsers = parser.add_subparsers(dest="action", help="action")
     subparsers.required = True
 
     grabber.configure_argparse(
         subparsers.add_parser(name="grabber", **grabber.get_argparser_args())
+    )
+
+    decode_image.configure_argparse(
+        subparsers.add_parser(name="decode_image", **decode_image.get_argparser_args())
     )
 
     ws.configure_argparse(
@@ -50,6 +54,10 @@ def main() -> int:
     if args.action == "grabber":
         from . import grabber
         return grabber.main(args)
+
+    if args.action == "decode_image":
+        from . import decode_image
+        return decode_image.main(args)
 
     if args.action == "ws":
         from . import ws
