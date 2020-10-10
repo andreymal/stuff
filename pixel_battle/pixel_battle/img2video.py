@@ -281,7 +281,7 @@ def main(args: argparse.Namespace) -> int:
             fileabspath = os.path.join(sourcedir, filepath)
             assert "'" not in fileabspath
             for _ in range(extra_duration.get(filepath, 1)):
-                ffmpeg.stdin.write(b"file '" + fileabspath.encode("utf-8") + b"'\n")
+                ffmpeg.stdin.write(b"file 'file:" + fileabspath.encode("utf-8") + b"'\n")
                 # Хотя указание duration необязательно, с ним ffmpeg меньше плющит в логах
                 # (и этот duration всё равно игнорируется из-за -r выше)
                 ffmpeg.stdin.write(b"duration " + str(dur).encode("utf-8") + b"\n")

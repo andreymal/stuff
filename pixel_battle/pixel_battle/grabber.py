@@ -19,9 +19,9 @@ from PIL import Image
 from . import utils
 
 
-default_url = "https://pixel2019.vkforms.ru/api/data/16"
-default_top_url = "https://pixel2019.vkforms.ru/api/top"
-user_agent = "Mozilla/5.0; pixel_battle/0.3.3 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
+default_url = "https://pixel-dev.w84.vkforms.ru/api/data"
+default_top_url = "https://pixel-dev.w84.vkforms.ru/api/top"
+user_agent = "Mozilla/5.0; pixel_battle/0.3.4 (grabber; https://github.com/andreymal/stuff/tree/master/pixel_battle)"
 log_fp: Optional[TextIO] = None
 
 
@@ -89,12 +89,19 @@ def download(
     tries: int = 2,
     tries_interval: float = 0.5,
     timeout: int = 2,
+    headers: Optional[Dict[str, Optional[str]]] = None,
+    expected_minsize: Optional[int] = None,
 ) -> Optional[bytes]:
     # Готовим HTTP-запрос
     r = Request(url)
     r.add_header("User-Agent", user_agent)
 
-    # Пытаемся скачать в пять попыток, а то иногда бывает ошибка 502
+    if headers:
+        for k, v in headers.items():
+            if v:
+                r.add_header(k, v)
+
+    # Пытаемся скачать в несколько попыток, а то иногда бывает ошибка 502
     data = b""
     for trynum in range(tries):
         try:
@@ -104,7 +111,11 @@ def download(
             if trynum >= tries - 1:
                 return None
         else:
-            break
+            if expected_minsize is None or len(data) >= expected_minsize:
+                # Сервер иногда отдаёт обрезанный ответ, поэтому вот базовая проверка, что он не обрезан
+                break
+            else:
+                log("truncated", tm=False, end="; ")
         time.sleep(tries_interval)
 
     if len(data) > maxsize:
@@ -123,9 +134,9 @@ def grab(
     filename: Optional[str] = None,
     filename_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S.png",
     filename_meta: Optional[str] = None,
-    filename_meta_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_meta.txt",
+    filename_meta_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_meta.json",
     filename_top: Optional[str] = None,
-    filename_top_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_top.txt",
+    filename_top_format: str = "%Y-%m-%d_%H/%Y-%m-%d_%H-%M-%S_top.json",
     filename_utc: bool = False,
     saveopts: Optional[Dict[str, Any]] = None,
     last_filename: Optional[str] = "last.png",
@@ -134,20 +145,21 @@ def grab(
     file_mode: Optional[int] = None,
     randomize_urls: bool = True,
     state: Optional[PixelBattleState] = None,
+    top_vk_sign: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     if state is None:
         state = global_state
 
-    # Обходим кривое кэширование на стороне сервера
-    if randomize_urls:
-        rnd = str(time.time())
-        url += ("&" if "?" in url else "?") + rnd
-        if top_url:
-            top_url += ("&" if "?" in top_url else "?") + rnd
-
     # Генерируем имя сохраняемых файлов
     tm = datetime.utcnow()  # UTC
     tm_local = datetime.now()  # local timezone
+
+    # Обходим кривое кэширование на стороне сервера
+    if randomize_urls:
+        rnd = "{m}-{h}".format(m=tm_local.minute, h=tm_local.hour)
+        url += ("&" if "?" in url else "?") + "ts=" + rnd
+        if top_url:
+            top_url += ("&" if "?" in top_url else "?") + "ts=" + rnd
 
     if not filename:
         if filename_utc:
@@ -184,7 +196,7 @@ def grab(
 
     # Скачиваем пиксели (они отдаются в виде текстовых символов)
     log("[im:", tm=False, end=" ")
-    orig_data_bin: Optional[bytes] = download(url, maxsize)
+    orig_data_bin: Optional[bytes] = download(url, maxsize, expected_minsize=state.width * state.height)
     if orig_data_bin is None:
         log("fail]", tm=False)
         return None, None
@@ -198,7 +210,7 @@ def grab(
     top_data_bin: Optional[bytes] = None
     if top_url is not None:
         log("[top:", tm=False, end=" ")
-        top_data_bin = download(top_url, maxsize, timeout=1)
+        top_data_bin = download(top_url, maxsize, timeout=1, headers={"X-vk-sign": top_vk_sign})
         if top_data_bin is None:
             log("fail]", tm=False, end=" ")
         else:
@@ -425,6 +437,7 @@ def configure_argparse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-p", "--palette", required=True, help="palette file (json)")
     parser.add_argument("--url", help="image data URL (default: {})".format(default_url), default=default_url)
     parser.add_argument("--top-url", help="top data URL (default: {})".format(default_top_url), default=default_top_url)
+    parser.add_argument("--top-vk-sign", help="X-vk-sign header for top request", default=None)
     parser.add_argument("--use-symlinks", default=False, action="store_true", help="Use symlinks to deduplicate files")
     parser.add_argument("--max-symlinks-count", type=int, default=1440, help="maximum number of symlinks pointing to the same file (0 is infinity; default: 1440)")
     parser.add_argument("-S", "--maxsize", type=float, default=5.0, help="max image size in MiB (default: 5.0)")
@@ -455,6 +468,7 @@ def main(args: argparse.Namespace) -> int:
     use_symlinks = bool(args.use_symlinks)
     url = args.url
     top_url = args.top_url
+    top_vk_sign = args.top_vk_sign
 
     # Если будут сплошные симлинки много часов подряд, то избытки из середины
     # списка станут удаляться
@@ -508,6 +522,7 @@ def main(args: argparse.Namespace) -> int:
                     use_symlinks=use_symlinks,
                     saveopts=saveopts,
                     state=state,
+                    top_vk_sign=top_vk_sign,
                 )
                 clear_old_symlinks(root, max_symlinks_count, state=state)
                 state.save(state_path)

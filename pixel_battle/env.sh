@@ -6,6 +6,9 @@ mkdir -p my/src
 chmod 700 my
 
 PYTHON="python3"
-BEGIN="2019-10-10_15/2019-10-10_15-21-10.png"
-END="2019-10-10_16/2019-10-10_16-58-50.png"
-EXTRA="2019.json"
+BEGIN="2020-10-10_12/2020-10-10_12-01-40.png"
+END="2020-10-10_12/2020-10-10_12-50-00.png"
+EXTRA="2020.json"
+
+# Update for your system \
+PB_FONT="/usr/share/fonts/TTF/Arial.TTF"
