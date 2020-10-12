@@ -13,6 +13,9 @@ if typing.TYPE_CHECKING:
     import websockets
 
 
+zero_dt = datetime(1970, 1, 1, 0, 0, 0)
+
+
 def get_argparser_args() -> Dict[str, Any]:
     return {
         "description": "Saves received data from websocket to file",
@@ -40,7 +43,7 @@ async def ws_grab(ws: "websockets.client.WebSocketClientProtocol", fp: BinaryIO)
         # - собственно данные;
         # - два переноса строки как признак окончания куска данных.
         buf: List[bytes] = [b"T" if isinstance(data, str) else b"B"]
-        buf.append(int(dt.timestamp()).to_bytes(4, "big"))
+        buf.append(int((dt - zero_dt).total_seconds()).to_bytes(4, "big"))
         buf.append(dt.microsecond.to_bytes(4, "big"))
         buf.append(len(data_bin).to_bytes(4, "big"))
         buf.append(b"\n")

@@ -24,6 +24,7 @@ def configure_argparse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--force", default=False, action="store_true", help="override existing files")
     parser.add_argument("-ir", "--input-fps", type=int, help="input video framerate (default: 30)", default=30)
     parser.add_argument("-or", "--output-fps", type=int, help="output video framerate (default: same as input)", default=0)
+    parser.add_argument("-g", "--keyint", type=int, help="keyframe interval (default: fps*5)", default=0)
     parser.add_argument("--begin", help="begin from this image (relative to sourcedir)")
     parser.add_argument("--end", help="end to this image (relative to sourcedir)")
     parser.add_argument("--ffmpeg", help="customize ffmpeg command", default="ffmpeg -hide_banner")
@@ -95,6 +96,10 @@ def main(args: argparse.Namespace) -> int:
     # Преобразуем pixfmt в совместимый если надо
     if args.format == "vp9" and pixfmt == "rgb24":
         pixfmt = "gbrp"
+
+    keyint = int(args.keyint)
+    if not keyint:
+        keyint = (args.output_fps or args.input_fps) * 5
 
     # Загружаем extra конфиг из json-файла
     extra: Dict[str, Any] = {}
@@ -178,6 +183,7 @@ def main(args: argparse.Namespace) -> int:
             "-lossless", "1",
             "-deadline", "good",
             "-cpu-used", "0",
+            "-g", str(keyint),
         ])
         ffmpeg_output_args.extend([
             "-f", "webm",
@@ -189,6 +195,8 @@ def main(args: argparse.Namespace) -> int:
             "-c:v", "libx264rgb" if pixfmt in ("rgb24", "gbrp") else "libx264",
             "-preset", "veryslow",
             "-crf", "0",
+            "-g", str(keyint),
+            "-x264opts", "no-scenecut",
         ])
         ffmpeg_output_args.extend([
             "-f", "mp4",
@@ -202,6 +210,8 @@ def main(args: argparse.Namespace) -> int:
             "-profile:v", "main",
             "-level", "4.1",
             "-preset", "slow",
+            "-g", str(keyint),
+            "-x264opts", "no-scenecut",
         ])
         ffmpeg_output_args.extend([
             "-f", "mp4",
@@ -220,6 +230,8 @@ def main(args: argparse.Namespace) -> int:
             "-level", "3.1",
             "-preset", "slow",
             "-tune", "fastdecode",
+            "-g", str(keyint),
+            "-x264opts", "no-scenecut",
         ])
         ffmpeg_output_args.extend([
             "-f", "mp4",
@@ -271,6 +283,7 @@ def main(args: argparse.Namespace) -> int:
             stdin=PIPE,
             bufsize=0,  # отключаем буферизацию stdin
         )
+        assert ffmpeg is not None  # mypy hint
 
         ffmpeg.stdin.write(b"ffconcat version 1.0\n\n")
         if concat_fp:
@@ -287,7 +300,7 @@ def main(args: argparse.Namespace) -> int:
                 ffmpeg.stdin.write(b"duration " + str(dur).encode("utf-8") + b"\n")
 
                 if concat_fp is not None:
-                    concat_fp.write("file '" + filepath + "'\n")
+                    concat_fp.write("file 'file:" + filepath + "'\n")
                 if list_fp is not None:
                     list_fp.write(filepath + "\n")
 

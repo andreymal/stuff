@@ -88,7 +88,7 @@ def download(
     maxsize: int = 5 * 1024 * 1024,
     tries: int = 2,
     tries_interval: float = 0.5,
-    timeout: int = 2,
+    timeout: int = 4,
     headers: Optional[Dict[str, Optional[str]]] = None,
     expected_minsize: Optional[int] = None,
 ) -> Optional[bytes]:

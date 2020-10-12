@@ -3,6 +3,7 @@
 
 import os
 import sys
+import json
 import argparse
 from typing import Any, Dict
 
@@ -19,11 +20,24 @@ def configure_argparse(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-a", "--abspath", action="store_true", default=False, help="print absolute paths (default: relative to sourcedir)")
     parser.add_argument("--begin", help="begin from this image (relative to sourcedir)")
     parser.add_argument("--end", help="end to this image (relative to sourcedir)")
+    parser.add_argument("--extra", help="JSON file with extra durations")
     parser.add_argument("sourcedir", metavar="SOURCEDIR", help="directory with saved images")
 
 
 def main(args: argparse.Namespace) -> int:
     sourcedir = os.path.abspath(args.sourcedir)
+
+    # Загружаем extra конфиг из json-файла
+    extra: Dict[str, Any] = {}
+    if args.extra:
+        with open(args.extra, "r", encoding="utf-8-sig") as fp:
+            extra = json.load(fp)
+            if not isinstance(extra, dict):
+                print("Invalid extra file")
+                return 1
+
+    # {"1970-01-01_00/1970-01-01_00-00-00.png": 777 число повторов этого кадра если надо}
+    extra_duration: Dict[str, int] = extra.get("duration") or {}
 
     # Собираем список всех доступных картинок
     filelist_full = utils.find_images(sourcedir)
@@ -38,9 +52,11 @@ def main(args: argparse.Namespace) -> int:
     print("    end:", filelist[-1], file=sys.stderr)
 
     for f in filelist:
+        f_ready = f
         if args.abspath:
-            f = os.path.join(sourcedir, f)
-        print(f)
+            f_ready = os.path.abspath(os.path.join(sourcedir, f))
+        for _ in range(extra_duration.get(f, 1)):
+            print(f_ready)
 
     return 0
 
