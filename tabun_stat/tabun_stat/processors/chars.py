@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any, List
+from typing import Dict, List
 from datetime import datetime
 from collections import Counter
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -15,11 +12,11 @@ class CharsProcessor(BaseProcessor):
         super().__init__()
         self._chars = {}  # type: Dict[str, List[int]]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
-        self._process(post['body'], post['created_at'])
+    def process_post(self, post: types.Post) -> None:
+        self._process(post.body, post.created_at)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
-        self._process(comment['body'], comment['created_at'])
+    def process_comment(self, comment: types.Comment) -> None:
+        self._process(comment.body, comment.created_at)
 
     def _process(self, body: str, tm: datetime) -> None:
         body = body.strip()

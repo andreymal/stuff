@@ -21,7 +21,7 @@ setup(
     author_email='andriyano-31@mail.ru',
     license='MIT',
     platforms='any',
-    python_requires='>=3.5',
+    python_requires='>=3.7',
     packages=find_packages(),
     install_requires=[
         'toml',

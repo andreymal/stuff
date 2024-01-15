@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import typing
 from typing import Optional, Dict, Any
 from datetime import datetime
+
+from tabun_stat import types
 
 if typing.TYPE_CHECKING:
     from tabun_stat.stat import TabunStat  # pylint: disable=W0611
@@ -35,32 +34,32 @@ class BaseProcessor:
         self.max_date = None
         assert self._used
 
-    def begin_users(self, stat: Dict[str, Any]) -> None:
+    def begin_users(self, stat: types.UsersLimits) -> None:
         pass
 
-    def process_user(self, user: Dict[str, Any]) -> None:
+    def process_user(self, user: types.User) -> None:
         pass
 
-    def end_users(self, stat: Dict[str, Any]) -> None:
+    def end_users(self, stat: types.UsersLimits) -> None:
         pass
 
-    def begin_blogs(self, stat: Dict[str, Any]) -> None:
+    def begin_blogs(self, stat: types.BlogsLimits) -> None:
         pass
 
-    def process_blog(self, blog: Dict[str, Any]) -> None:
+    def process_blog(self, blog: types.Blog) -> None:
         pass
 
-    def end_blogs(self, stat: Dict[str, Any]) -> None:
+    def end_blogs(self, stat: types.BlogsLimits) -> None:
         pass
 
-    def begin_messages(self, stat_posts: Dict[str, Any], stat_comments: Dict[str, Any]) -> None:
+    def begin_messages(self, stat_posts: types.PostsLimits, stat_comments: types.CommentsLimits) -> None:
         pass
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         pass
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         pass
 
-    def end_messages(self, stat_posts: Dict[str, Any], stat_comments: Dict[str, Any]) -> None:
+    def end_messages(self, stat_posts: types.PostsLimits, stat_comments: types.CommentsLimits) -> None:
         pass

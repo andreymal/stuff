@@ -1,25 +1,25 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import sys
 import time
 from datetime import datetime, timedelta
+from itertools import chain
 from typing import Optional, Callable, Dict, Any, List, Union
 
 import pytz
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.datasource.base import BaseDataSource
 from tabun_stat.processors.base import BaseProcessor
 
 
 
 class TabunStat:
+    timezone: pytz.BaseTzInfo
+
     def __init__(
         self, source: BaseDataSource, destination: str, verbosity: int = 0,
         min_date: Optional[datetime] = None, max_date: Optional[datetime] = None,
-        timezone: Union[str, utils.BaseTzInfo, None] = None
+        timezone: Union[str, pytz.BaseTzInfo, None] = None
     ) -> None:
         """
         :param BaseDataSource source: источник данных для обработки
@@ -57,14 +57,14 @@ class TabunStat:
         if os.path.exists(self.destination) and os.listdir(self.destination):
             raise OSError('Directory {!r} is not empty'.format(self.destination))
 
-        self.log = self._default_log  # type: Callable
+        self.log = self._default_log  # type: Callable[..., Any]
         self._isatty = None  # type: Optional[bool]
 
         self._processors = []  # type: List[BaseProcessor]
         self._perf = []  # type: List[float]
         self._source_perf = 0.0
 
-    def _default_log(self, verbosity: int, *args, end: str = '\n', for_tty: bool = False) -> None:
+    def _default_log(self, verbosity: int, *args: Any, end: str = '\n', for_tty: bool = False) -> None:
         if verbosity > self.verbosity:
             return
         if not args or args == ('',):
@@ -77,10 +77,10 @@ class TabunStat:
 
         print(*args, file=sys.stderr, end=end, flush=True)
 
-    def _empty_log(self, verbosity: int, *args, end: str = '\n', for_tty: bool = False) -> None:
+    def _empty_log(self, verbosity: int, *args: Any, end: str = '\n', for_tty: bool = False) -> None:
         pass
 
-    def set_log_function(self, func: Callable) -> None:
+    def set_log_function(self, func: Callable[..., None]) -> None:
         """Устанавливает функцию, печатающую лог. Должна принимать verbosity,
         *args, end и for_tty. По умолчанию всё печатается в stderr.
         """
@@ -108,10 +108,10 @@ class TabunStat:
         self._processors.clear()
         return True
 
-    def destroy(self):
+    def destroy(self) -> None:
         """Прибирает оперативку."""
         self._processors = []
-        self.source = None
+        self.source = None  # type: ignore
 
     # Замерялка производительности
 
@@ -148,7 +148,7 @@ class TabunStat:
 
     # Но сверху это всё вспомогательная вода, самая мякотка тут ↓
 
-    def go(self):
+    def go(self) -> None:
         """Запускает подсчёт статистики. Суть такова:
 
         * если max_date не указан, то ставит текущее время;
@@ -246,11 +246,11 @@ class TabunStat:
         stat = self.source.get_users_limits()
         self._source_perf += (time.time() - tm)
 
-        if not stat['count']:
+        if not stat.count:
             self.log(1, 'nothing to do.')
             return
 
-        drawer = utils.progress_drawer(target=stat['count'], show_count=True, use_unicode=True)
+        drawer = utils.progress_drawer(target=stat.count, show_count=True, use_unicode=True)
         self.log(2, drawer.send(None) or '', end='', for_tty=True)
 
         for idx, p in enumerate(self._processors):
@@ -263,7 +263,7 @@ class TabunStat:
         for users in self.source.iter_users():  # никакая сортировка не гарантируется
             self._source_perf += (time.time() - tm)
             for user in users:
-                user['registered_at_local'] = utils.apply_tzinfo(user['registered_at'], self.timezone)
+                user.registered_at_local = utils.apply_tzinfo(user.registered_at, self.timezone)
 
             i += len(users)
             self.log(2, drawer.send(i) or '', end='', for_tty=True)
@@ -295,11 +295,12 @@ class TabunStat:
         stat = self.source.get_blogs_limits()
         self._source_perf += (time.time() - tm)
 
-        if not stat['count']:
+        if not stat.count:
             self.log(1, 'nothing to do.')
             return
+        assert stat.first_id is not None and stat.last_id is not None
 
-        drawer = utils.progress_drawer(target=stat['count'], show_count=True, use_unicode=True)
+        drawer = utils.progress_drawer(target=stat.count, show_count=True, use_unicode=True)
         self.log(2, drawer.send(None) or '', end='', for_tty=True)
 
         for idx, p in enumerate(self._processors):
@@ -312,7 +313,7 @@ class TabunStat:
         for blogs in self.source.iter_blogs():  # никакая сортировка не гарантируется
             self._source_perf += (time.time() - tm)
             for blog in blogs:
-                blog['created_at_local'] = utils.apply_tzinfo(blog['created_at'], self.timezone)
+                blog.created_at_local = utils.apply_tzinfo(blog.created_at, self.timezone)
 
             i += len(blogs)
             self.log(2, drawer.send(i) or '', end='', for_tty=True)
@@ -350,30 +351,32 @@ class TabunStat:
         self.log(1, '\b' * len(l), end='', for_tty=True)
         del l
 
-        #{'first_created_at': None, 'last_created_at': None, 'count': 0}#
-
         # Если нет ни постов, ни комментов, то делать нечего
         if (
-            (stat_posts['first_created_at'] is None or stat_posts['last_created_at'] is None or not stat_posts['count'])
+            (stat_posts.first_created_at is None or stat_posts.last_created_at is None or not stat_posts.count)
             and
-            (stat_comments['first_created_at'] is None or stat_comments['last_created_at'] is None or not stat_comments['count'])
+            (stat_comments.first_created_at is None or stat_comments.last_created_at is None or not stat_comments.count)
         ):
             self.log(1, 'nothing to do.')
             return
 
-        drawer = utils.progress_drawer(target=stat_posts['count'] + stat_comments['count'], show_count=True, use_unicode=True)
+        drawer = utils.progress_drawer(target=stat_posts.count + stat_comments.count, show_count=True, use_unicode=True)
         self.log(2, drawer.send(None) or '', end='', for_tty=True)
 
         # Высчитываем охватываемый интервал времени
-        if stat_posts['first_created_at'] and stat_comments['first_created_at']:
-            min_date = min(stat_posts['first_created_at'], stat_comments['first_created_at'])
+        if stat_posts.first_created_at and stat_comments.first_created_at:
+            min_date = min(stat_posts.first_created_at, stat_comments.first_created_at)
         else:
-            min_date = stat_posts['first_created_at'] or stat_comments['first_created_at']
+            d = stat_posts.first_created_at or stat_comments.first_created_at
+            assert d is not None
+            min_date = d
 
-        if stat_posts['last_created_at'] and stat_comments['last_created_at']:
-            max_date = max(stat_posts['last_created_at'], stat_comments['last_created_at'])
+        if stat_posts.last_created_at and stat_comments.last_created_at:
+            max_date = max(stat_posts.last_created_at, stat_comments.last_created_at)
         else:
-            max_date = stat_posts['last_created_at'] or stat_comments['last_created_at']
+            d = stat_posts.last_created_at or stat_comments.last_created_at
+            assert d is not None
+            max_date = d
 
         for idx, p in enumerate(self._processors):
             tm = time.time()
@@ -394,25 +397,26 @@ class TabunStat:
                 filters['created_at__lt'] = next_day
 
             tm = time.time()
-            posts = []  # type: List[Dict[str, Any]]
-            posts = sum(self.source.iter_posts(filters=filters), posts)
-            comments = []  # type: List[Dict[str, Any]]
-            comments = sum(self.source.iter_comments(filters=filters), comments)
+            posts = list(chain.from_iterable(self.source.iter_posts(filters=filters)))
+            comments = list(chain.from_iterable(self.source.iter_comments(filters=filters)))
             self._source_perf += (time.time() - tm)
 
-            messages = posts + comments
-            messages.sort(key=lambda x: x['created_at'])
+            messages: List[Union[types.Post, types.Comment]] = []
+            messages.extend(posts)
+            messages.extend(comments)
+
             if messages:
-                assert messages[0]['created_at'] >= day
-                assert messages[-1]['created_at'] < next_day
+                messages.sort(key=lambda x: x.created_at)
+                assert messages[0].created_at >= day
+                assert messages[-1].created_at < next_day
 
             for message in messages:
-                message['created_at_local'] = utils.apply_tzinfo(message['created_at'], self.timezone)
+                message.created_at_local = utils.apply_tzinfo(message.created_at, self.timezone)
 
             for idx, p in enumerate(self._processors):
                 tm = time.time()
                 for message in messages:
-                    if 'comment_id' in message:
+                    if isinstance(message, types.Comment):
                         p.process_comment(message)
                     else:
                         p.process_post(message)

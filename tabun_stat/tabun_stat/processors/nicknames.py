@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any, Set
+from typing import Dict, Set
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -13,11 +10,11 @@ class NicknamesProcessor(BaseProcessor):
         super().__init__()
         self._letters = {}  # type: Dict[str, Set[int]]
 
-    def process_user(self, user: Dict[str, Any]) -> None:
-        c = user['username'][0]
+    def process_user(self, user: types.User) -> None:
+        c = user.username[0]
         if c not in self._letters:
             self._letters[c] = set()
-        self._letters[c].add(user['user_id'])
+        self._letters[c].add(user.id)
 
     def stop(self) -> None:
         assert self.stat

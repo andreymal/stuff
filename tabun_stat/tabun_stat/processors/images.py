@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import re
 from typing import Dict, Any, List
 from datetime import datetime
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
@@ -24,20 +21,22 @@ class ImagesProcessor(BaseProcessor):
         self._hosts = {}  # type: Dict[str, List[int]]
         self._hosts2 = {}  # type: Dict[str, List[int]]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
-        self._process(post['body'], post['blog_status'], post['created_at'])
+    def process_post(self, post: types.Post) -> None:
+        self._process(post.body, post.blog_status, post.created_at)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
 
         try:
-            blog_id = self.stat.source.get_blog_id_of_post(comment['post_id'])
+            if comment.post_id is None:
+                raise DataNotFound
+            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
         except DataNotFound:
-            self.stat.log(0, 'WARNING: comment {} for unknown post {}'.format(comment['comment_id'], comment['post_id']))
+            self.stat.log(0, f'WARNING: images: comment {comment.id} for unknown post {comment.post_id}')
             return
 
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
-        self._process(comment['body'], blog_status, comment['created_at'])
+        self._process(comment.body, blog_status, comment.created_at)
 
     def _get_host(self, url: str) -> str:
         # https://example.com:80/path → example.com:80/path
@@ -49,10 +48,10 @@ class ImagesProcessor(BaseProcessor):
         else:
             host = url
 
-        # example.com:80/path → example.com:80
+        # example.com:80/path → example.com:80
         host = host.split('/', 1)[0]
 
-        # example.com:80 → example.com
+        # example.com:80 → example.com
         host = host.split(':', 1)[0]
 
         return host
@@ -60,7 +59,7 @@ class ImagesProcessor(BaseProcessor):
     def _get_host2(self, url: str) -> str:
         host = self._get_host(url)
 
-        # a.b.c.d.e → d.e
+        # a.b.c.d.e → d.e
         while host.count('.') > 1:
             host = host[host.find('.') + 1:]
         return host

@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Tuple, Any, Set
+from typing import Dict, Tuple, Set
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -15,16 +12,16 @@ class BirthdaysProcessor(BaseProcessor):
         # {(день, месяц): айдишники пользователей}
         self._birthdays = {}  # type: Dict[Tuple[int, int], Set[int]]
 
-    def process_user(self, user: Dict[str, Any]) -> None:
-        if not user['birthday']:
+    def process_user(self, user: types.User) -> None:
+        if not user.birthday:
             return
 
-        day = (user['birthday'].day, user['birthday'].month)
+        day = (user.birthday.day, user.birthday.month)
         if day not in self._birthdays:
             self._birthdays[day] = set()
-        self._birthdays[day].add(user['user_id'])
+        self._birthdays[day].add(user.id)
 
-    def end_users(self, stat: Dict[str, Any]) -> None:
+    def end_users(self, stat: types.UsersLimits) -> None:
         assert self.stat
 
         with open(os.path.join(self.stat.destination, 'birthdays.csv'), 'w', encoding='utf-8') as fp:

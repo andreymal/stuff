@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 from typing import Dict, Tuple, Any, List
 from datetime import date, timedelta
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -15,15 +12,16 @@ class PostsCountsAvgProcessor(BaseProcessor):
 
         self.collect_empty_days = collect_empty_days
 
-        self._last_day = date(1970, 1, 1)  # type: date
+        self._last_day = date(1970, 1, 1)
 
         self._counts = {}  # type: Dict[Tuple[int, int], List[int]]
         self._days = {}  # type: Dict[Tuple[int, int], int]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         assert self.stat
-        day = post['created_at_local'].date()
-        hour = post['created_at_local'].hour
+        assert post.created_at_local is not None
+        day = post.created_at_local.date()
+        hour = post.created_at_local.hour
 
         # Если это самый первый пост, поступивший на обработку, то
         # инициализиуем всю статистику

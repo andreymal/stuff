@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any
+from typing import Dict
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -13,13 +10,14 @@ class CommentsRatingsProcessor(BaseProcessor):
         super().__init__()
         self._stat = {}  # type: Dict[int, Dict[int, int]]
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
+        assert comment.created_at_local is not None
 
-        vote = comment['vote_value']
+        vote = comment.vote_value
 
         # Забираем год в правильном часовом поясе
-        year = comment['created_at_local'].year
+        year = comment.created_at_local.year
 
         if year not in self._stat:
             self._stat[year] = {}

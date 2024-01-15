@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 from typing import Dict, Any, Iterable, List
 from datetime import datetime
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
@@ -16,7 +13,7 @@ class WordsProcessor(BaseProcessor):
         self.bot_ids = tuple(bot_ids)
         self.delimeters = delimeters
 
-        # Первый элемент — значение в штуках/символах/байтах, второй — количество постов/комментов
+        # Первый элемент — значение в штуках/символах/байтах, второй — количество постов/комментов
         self._post_len_words = [0, 0]
         self._post_len_chars = [0, 0]
         self._post_len_bytes = [0, 0]
@@ -34,20 +31,24 @@ class WordsProcessor(BaseProcessor):
         self._stat = {}  # type: Dict[str, Dict[str, Dict[str, Any]]]
         self._words_list = []  # type: List[str]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
-        self._process(post['author_id'], post['body'], post['created_at_local'], is_comment=False, blog_status=post['blog_status'])
+    def process_post(self, post: types.Post) -> None:
+        assert post.created_at_local is not None
+        self._process(post.author_id, post.body, post.created_at_local, is_comment=False, blog_status=post.blog_status)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
+        assert comment.created_at_local is not None
         assert self.stat
 
         try:
-            blog_id = self.stat.source.get_blog_id_of_post(comment['post_id'])
+            if comment.post_id is None:
+                raise DataNotFound
+            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
         except DataNotFound:
-            self.stat.log(0, 'WARNING: comment {} for unknown post {}'.format(comment['comment_id'], comment['post_id']))
+            self.stat.log(0, f'WARNING: words: comment {comment.id} for unknown post {comment.post_id}')
             return
 
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
-        self._process(comment['author_id'], comment['body'], comment['created_at_local'], is_comment=True, blog_status=blog_status)
+        self._process(comment.author_id, comment.body, comment.created_at_local, is_comment=True, blog_status=blog_status)
 
     def _process(self, author_id: int, raw_body: str, created_at_local: datetime, is_comment: bool, blog_status: int) -> None:
         assert self.stat

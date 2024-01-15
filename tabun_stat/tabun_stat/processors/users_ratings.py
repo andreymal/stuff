@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 import math
-from typing import Dict, Any, Iterable
+from typing import Dict, Iterable
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -18,17 +15,17 @@ class UsersRatingsProcessor(BaseProcessor):
         for step in steps:
             self._ratings[step] = {}
 
-    def process_user(self, user: Dict[str, Any]) -> None:
+    def process_user(self, user: types.User) -> None:
         for step in self._ratings:
-            step_vote = int(math.floor(user['rating'] / step) * step)
+            step_vote = int(math.floor(user.rating / step) * step)
             if step_vote not in self._ratings[step]:
                 self._ratings[step][step_vote] = 0
             self._ratings[step][step_vote] += 1
 
-        if user['rating'] == 0.0:
+        if user.rating == 0.0:
             self._zero += 1
 
-    def end_users(self, stat: Dict[str, Any]) -> None:
+    def end_users(self, stat: types.UsersLimits) -> None:
         assert self.stat
 
         for step in self._ratings:

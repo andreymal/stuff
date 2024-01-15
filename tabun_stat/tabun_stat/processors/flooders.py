@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any, List
+from typing import Dict, List
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
@@ -41,31 +38,35 @@ class FloodersProcessor(BaseProcessor):
 
         return result
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         assert self.stat
-        year = post['created_at_local'].year
+        assert post.created_at_local is not None
+        year = post.created_at_local.year
 
-        self._put(self._flooders_all_posts, year, post['author_id'])
+        self._put(self._flooders_all_posts, year, post.author_id)
 
-        blog_status = post['blog_status']
+        blog_status = post.blog_status
         if blog_status in (0, 2):
-            self._put(self._flooders_public_posts, year, post['author_id'])
+            self._put(self._flooders_public_posts, year, post.author_id)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
-        year = comment['created_at_local'].year
+        assert comment.created_at_local is not None
+        year = comment.created_at_local.year
 
         try:
-            blog_id = self.stat.source.get_blog_id_of_post(comment['post_id'])
+            if comment.post_id is None:
+                raise DataNotFound
+            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
         except DataNotFound:
-            self.stat.log(0, 'WARNING: comment {} for unknown post {}'.format(comment['comment_id'], comment['post_id']))
+            self.stat.log(0, f'WARNING: flooders: comment {comment.id} for unknown post {comment.post_id}')
             return
 
-        self._put(self._flooders_all_comments, year, comment['author_id'])
+        self._put(self._flooders_all_comments, year, comment.author_id)
 
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
         if blog_status in (0, 2):
-            self._put(self._flooders_public_comments, year, comment['author_id'])
+            self._put(self._flooders_public_comments, year, comment.author_id)
 
     def stop(self) -> None:
         assert self.stat
@@ -106,12 +107,14 @@ class FloodersProcessor(BaseProcessor):
         super().stop()
 
     def save_stat(
-        self, filename: str, stat_posts: Dict[int, int],
+        self,
+        filename: str,
+        stat_posts: Dict[int, int],
         stat_comments: Dict[int, int]
     ) -> None:
         assert self.stat
 
-        stat = {}  # type: Dict[int, List[int]]
+        stat: Dict[int, List[int]] = {}
 
         for user_id, count in stat_posts.items():
             if user_id not in stat:
@@ -133,5 +136,5 @@ class FloodersProcessor(BaseProcessor):
                     user_id,
                     self.stat.source.get_username_by_user_id(user_id),
                     posts_count,
-                    comments_count
+                    comments_count,
                 ))

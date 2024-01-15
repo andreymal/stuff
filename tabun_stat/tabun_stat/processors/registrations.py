@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any
+from typing import Dict
 from datetime import date, timedelta
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -17,24 +14,25 @@ class RegistrationsProcessor(BaseProcessor):
         self._stat_gte_minus20 = {}  # type: Dict[date, int]
         self._stat_gte_plus20 = {}  # type: Dict[date, int]
 
-    def process_user(self, user: Dict[str, Any]) -> None:
-        day = user['registered_at_local'].date()
+    def process_user(self, user: types.User) -> None:
+        assert user.registered_at_local is not None
+        day = user.registered_at_local.date()
 
         if day not in self._stat:
             self._stat[day] = 0
         self._stat[day] += 1
 
-        if user['rating'] >= -20.0:
+        if user.rating >= -20.0:
             if day not in self._stat_gte_minus20:
                 self._stat_gte_minus20[day] = 0
             self._stat_gte_minus20[day] += 1
 
-        if user['rating'] >= 20.0:
+        if user.rating >= 20.0:
             if day not in self._stat_gte_plus20:
                 self._stat_gte_plus20[day] = 0
             self._stat_gte_plus20[day] += 1
 
-    def end_users(self, stat: Dict[str, Any]) -> None:
+    def end_users(self, stat: types.UsersLimits) -> None:
         assert self.stat
 
         if not self._stat:

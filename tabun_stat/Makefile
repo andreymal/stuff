@@ -38,4 +38,4 @@ install: clean
 	$(PYTHON) setup.py install
 
 develop:
-	$(PYTHON) setup.py develop
+	$(PIP) install --upgrade --upgrade-strategy eager -e .

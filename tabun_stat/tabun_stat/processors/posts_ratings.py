@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any
+from typing import Dict
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -13,15 +10,16 @@ class PostsRatingsProcessor(BaseProcessor):
         super().__init__()
         self._stat = {}  # type: Dict[int, Dict[int, int]]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         assert self.stat
+        assert post.created_at_local is not None
 
-        vote = post['vote_value']
-        if vote is None or not post['body']:
+        vote = post.vote_value
+        if vote is None or not post.body:
             return  # Не забываем, что рейтинг поста может быть неизвестен
 
         # Забираем год в правильном часовом поясе
-        year = post['created_at_local'].year
+        year = post.created_at_local.year
 
         if year not in self._stat:
             self._stat[year] = {}

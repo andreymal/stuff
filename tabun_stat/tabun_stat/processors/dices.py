@@ -1,10 +1,7 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Any, List
+from typing import Dict, List
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -13,15 +10,15 @@ class DicesProcessor(BaseProcessor):
         super().__init__()
         self._dices = {}  # type: Dict[int, List[int]]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
-        if '<span class="dice">' not in post['body']:
+    def process_post(self, post: types.Post) -> None:
+        if '<span class="dice">' not in post.body:
             return
-        self._process(post['author_id'], post['body'])
+        self._process(post.author_id, post.body)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
-        if '<span class="dice">' not in comment['body']:
+    def process_comment(self, comment: types.Comment) -> None:
+        if '<span class="dice">' not in comment.body:
             return
-        self._process(comment['author_id'], comment['body'])
+        self._process(comment.author_id, comment.body)
 
     def _process(self, author_id: int, body: str) -> None:
         if author_id not in self._dices:

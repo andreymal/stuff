@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 import sys
 import argparse
+from typing import Callable
 
 import toml
 
 from tabun_stat.stat import TabunStat
 from tabun_stat import utils
+from tabun_stat.datasource.base import BaseDataSource
+from tabun_stat.processors.base import BaseProcessor
 
 
 __all__ = ['main']
@@ -25,20 +27,20 @@ def main() -> int:
         config = toml.load(fp)
 
     kwargs = dict(config['datasource'])
-    source = kwargs.pop('name')
-    if source.startswith(':'):
-        source = 'tabun_stat.datasource.' + source[1:]
-    source = utils.import_string(source)
-    source = source(**kwargs)
+    source_name = kwargs.pop('name')
+    if source_name.startswith(':'):
+        source_name = 'tabun_stat.datasource.' + source_name[1:]
+    source_creator: Callable[..., BaseDataSource] = utils.import_string(source_name)
+    source = source_creator(**kwargs)
 
     processors = []
     for processor_data in config['processors']:
         kwargs = dict(processor_data)
-        processor = kwargs.pop('name')
-        if processor.startswith(':'):
-            processor = 'tabun_stat.processors.' + processor[1:]
-        processor = utils.import_string(processor)
-        processors.append(processor(**kwargs))
+        processor_name = kwargs.pop('name')
+        if processor_name.startswith(':'):
+            processor_name = 'tabun_stat.processors.' + processor_name[1:]
+        processor_creator: Callable[..., BaseProcessor] = utils.import_string(processor_name)
+        processors.append(processor_creator(**kwargs))
 
     destination = args.destination or config['stat']['destination']
 

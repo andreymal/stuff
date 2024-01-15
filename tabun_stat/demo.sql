@@ -1,9 +1,8 @@
-PRAGMA foreign_keys=OFF;
 BEGIN TRANSACTION;
 
 
 CREATE TABLE users(
-    user_id int not null primary key,
+    id int not null primary key,
     username varchar(32) not null,
     realname text default null,
     skill real not null,
@@ -27,7 +26,7 @@ INSERT INTO users VALUES(30,'veon',NULL,10031.61,3709.61,'M',NULL,'2011-08-13 14
 
 
 CREATE TABLE blogs(
-    blog_id int not null primary key,
+    id int not null primary key,
     slug text not null,
     name text not null,
     creator_id int not null,
@@ -45,7 +44,7 @@ INSERT INTO blogs VALUES(8037,'borderline','На Грани',6,3147.0,2,replace(
 
 
 CREATE TABLE posts(
-    post_id int not null primary key,
+    id int not null primary key,
     created_at datetime not null,
     blog_id int default null,
     blog_status int not null,
@@ -63,8 +62,8 @@ INSERT INTO posts VALUES(8,'2011-08-13 14:35:52',NULL,0,22,'Instant Derpy!!!',11
 
 
 CREATE TABLE comments(
-    comment_id int not null primary key,
-    post_id int not null,
+    id int not null primary key,
+    post_id int default null,
     parent_id int default null,
     author_id int not null,
     created_at datetime not null,

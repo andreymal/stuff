@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Tuple, Any, Set, List, Optional, TextIO
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Dict, Any, List, Optional, TextIO
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
@@ -90,34 +87,36 @@ class CommentsCountsProcessor(BaseProcessor):
         self._fp_sum.write(header_csv)
         self._fp_perc.write(utils.csvline(*header[:-1]))  # В процентах комменты из лички не учитываем
 
-    def process_blog(self, blog: Dict[str, Any]) -> None:
-        if blog['slug'] in self._blogs_categories_slug:
-            self._blogs_categories[blog['blog_id']] = self._blogs_categories_slug[blog['slug']]
+    def process_blog(self, blog: types.Blog) -> None:
+        if blog.slug in self._blogs_categories_slug:
+            self._blogs_categories[blog.id] = self._blogs_categories_slug[blog.slug]
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
         # OLEG778!!!!!!!!
-        if comment['comment_id'] == 2498188:
+        if comment.id == 2498188:
             return
 
         # Если период закончился, то сохраняем статистику
         assert self.period_end
-        while comment['created_at'] >= self.period_end:
+        while comment.created_at >= self.period_end:
             self._flush_stat()
             self._first_comment_id = self._last_comment_id = 0
 
         # Забираем граничные айдишники комментов, чтобы потом по ним угадать
         # общее число комментов
         if self._first_comment_id == 0 or self._last_comment_id == 0:
-            self._first_comment_id = self._last_comment_id = comment['comment_id']
-        elif comment['comment_id'] > self._last_comment_id:
-            self._last_comment_id = comment['comment_id']
+            self._first_comment_id = self._last_comment_id = comment.id
+        elif comment.id > self._last_comment_id:
+            self._last_comment_id = comment.id
 
         try:
-            blog_id = self.stat.source.get_blog_id_of_post(comment['post_id'])
+            if comment.post_id is None:
+                raise DataNotFound
+            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
         except DataNotFound:
             # Бардак в базе данных, похоже
-            self.stat.log(0, 'WARNING: comment {} for unknown post {}'.format(comment['comment_id'], comment['post_id']))
+            self.stat.log(0, f'WARNING: comments_counts: comment {comment.id} for unknown post {comment.post_id}')
             return
 
         # Вычисляем категорию согласно настройкам

@@ -1,14 +1,10 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Optional, List, Dict, Tuple, Any, Set, Iterable, TextIO
+from typing import Optional, List, Dict, Tuple, Any, Set, Iterable
 from datetime import date, datetime, timedelta
 
-from tabun_stat import utils
-from tabun_stat.processors.base import BaseProcessor
-
+from tabun_stat import types, utils
 from tabun_stat.stat import TabunStat
+from tabun_stat.processors.base import BaseProcessor
 
 
 class ActivityProcessor(BaseProcessor):
@@ -19,7 +15,7 @@ class ActivityProcessor(BaseProcessor):
 
         # activity — это список активности по дням. Каждый элемент — множество
         # айдишников пользователей, активных в этот день
-        # users_with_posts — юзеры с постами
+        # users_with_posts — юзеры с постами
         # users_with_comments — юзеры с комментами
 
         self._ratings = {}  # type: Dict[Optional[float], Any]
@@ -56,31 +52,33 @@ class ActivityProcessor(BaseProcessor):
             item['fp'] = open(os.path.join(self.stat.destination, filename), 'w', encoding='utf-8')
             item['fp'].write(utils.csvline(*header))
 
-    def process_user(self, user: Dict[str, Any]) -> None:
+    def process_user(self, user: types.User) -> None:
         # Собираем рейтинги пользователей
-        self._user_ratings[user['user_id']] = user['rating']
+        self._user_ratings[user.id] = user.rating
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         assert self.stat
+        assert post.created_at_local is not None
 
-        if post['author_id'] in self._user_ratings:
-            rating = self._user_ratings[post['author_id']]
+        if post.author_id in self._user_ratings:
+            rating = self._user_ratings[post.author_id]
         else:
-            self.stat.log(0, 'WARNING: unknown author {} of post {}'.format(post['author_id'], post['post_id']))
+            self.stat.log(0, 'WARNING: unknown author {} of post {}'.format(post.author_id, post.id))
             rating = 0.0
 
-        self._put_activity(0, post['author_id'], post['created_at_local'], rating)
+        self._put_activity(0, post.author_id, post.created_at_local, rating)
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
+        assert comment.created_at_local is not None
 
-        if comment['author_id'] in self._user_ratings:
-            rating = self._user_ratings[comment['author_id']]
+        if comment.author_id in self._user_ratings:
+            rating = self._user_ratings[comment.author_id]
         else:
-            self.stat.log(0, 'WARNING: unknown author {} of comment {}'.format(comment['author_id'], comment['comment_id']))
+            self.stat.log(0, 'WARNING: unknown author {} of comment {}'.format(comment.author_id, comment.id))
             rating = 0.0
 
-        self._put_activity(1, comment['author_id'], comment['created_at_local'], rating)
+        self._put_activity(1, comment.author_id, comment.created_at_local, rating)
 
     def _put_activity(self, idx: int, user_id: int, created_at_local: datetime, rating: float) -> None:
         # idx: 0 - пост, 1 - коммент

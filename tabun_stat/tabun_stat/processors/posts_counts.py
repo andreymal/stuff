@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
-from typing import Dict, Tuple, Any, Set, List, Optional, TextIO
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Dict, Any, List, Optional, TextIO
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 from tabun_stat.stat import TabunStat
@@ -83,20 +80,20 @@ class PostsCountsProcessor(BaseProcessor):
         self._fp_sum.write(header_csv)
         self._fp_perc.write(utils.csvline(*header[:-1]))  # В процентах комменты из лички не учитываем
 
-    def process_blog(self, blog: Dict[str, Any]) -> None:
-        if blog['slug'] in self._blogs_categories_slug:
-            self._blogs_categories[blog['blog_id']] = self._blogs_categories_slug[blog['slug']]
+    def process_blog(self, blog: types.Blog) -> None:
+        if blog.slug in self._blogs_categories_slug:
+            self._blogs_categories[blog.id] = self._blogs_categories_slug[blog.slug]
 
-    def process_post(self, post: Dict[str, Any]) -> None:
+    def process_post(self, post: types.Post) -> None:
         assert self.stat
 
         # Если период закончился, то сохраняем статистику
         assert self.period_end
-        while post['created_at'] >= self.period_end:
+        while post.created_at >= self.period_end:
             self._flush_stat()
 
         # Вычисляем категорию согласно настройкам
-        blog_id = post['blog_id']
+        blog_id = post.blog_id
         category_idx = self._blogs_categories.get(blog_id) if blog_id is not None else None
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
 

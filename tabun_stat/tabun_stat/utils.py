@@ -1,8 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import time
-import typing
 import importlib
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Iterable, Generator, Union
@@ -10,19 +6,12 @@ from typing import Any, List, Optional, Iterable, Generator, Union
 import pytz
 
 
-# mypy + typeshed + pytz are crap
-if typing.TYPE_CHECKING:
-    BaseTzInfo = pytz._BaseTzInfo  # pylint: disable=E1101,W0212
-else:
-    BaseTzInfo = pytz.BaseTzInfo
-
-
-def import_string(s):
+def import_string(s: str) -> Any:
     if '.' not in s:
         raise ValueError('import_string can import only objects using dot')
 
-    module, attr = s.rsplit('.', 1)
-    module = importlib.import_module(module)
+    module_name, attr = s.rsplit('.', 1)
+    module = importlib.import_module(module_name)
     return getattr(module, attr)
 
 
@@ -222,7 +211,7 @@ def format_timedelta(tm: Union[int, float, timedelta]) -> str:
     return s
 
 
-def apply_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None) -> datetime:
+def apply_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None) -> datetime:
     """Применяет часовой пояс ко времени, перематывая время на нужное число
     часов/минут.
 
@@ -236,7 +225,7 @@ def apply_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None) -> d
 
     if not tzinfo:
         tzinfo = pytz.timezone('UTC')
-    assert isinstance(tzinfo, BaseTzInfo)
+    assert isinstance(tzinfo, pytz.BaseTzInfo)
 
     if not tm.tzinfo:
         tm = tzinfo.fromutc(tm)
@@ -249,7 +238,7 @@ def force_utc(tm: datetime) -> datetime:
     return apply_tzinfo(tm, pytz.timezone('UTC'))
 
 
-def set_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None, is_dst: bool = False) -> datetime:
+def set_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None, is_dst: bool = False) -> datetime:
     """Прикрепляет часовой пояс к объекту datetime, который без пояса.
     Возвращает объект datetime с прикреплённым часовым поясом, но значение
     (в частности, день и час), остаются теми же, что и были.
@@ -273,7 +262,7 @@ def set_tzinfo(tm: datetime, tzinfo: Union[str, BaseTzInfo, None] = None, is_dst
 
     if not tzinfo:
         tzinfo = pytz.timezone('UTC')
-    assert isinstance(tzinfo, BaseTzInfo)
+    assert isinstance(tzinfo, pytz.BaseTzInfo)
 
     return tzinfo.localize(tm, is_dst=is_dst)
 
@@ -285,7 +274,7 @@ def append_days(tm: datetime, days: int) -> datetime:
     if not tm.tzinfo:
         return tm + timedelta(days=days)
 
-    if not isinstance(tm.tzinfo, BaseTzInfo):
+    if not isinstance(tm.tzinfo, pytz.BaseTzInfo):
         raise ValueError('Expected pytz tzinfo')
 
     # Добавляем days*24 часов пока без учёта пояса
@@ -293,7 +282,11 @@ def append_days(tm: datetime, days: int) -> datetime:
     # Нормализуем (час может измениться!)
     tomorrow = tm.tzinfo.normalize(tomorrow)
     # Выясняем, попадаются ли 25 часов в сутках между старой и новой датой
-    diff = tomorrow.utcoffset() - tm.utcoffset()  # type: timedelta
+    tomorrow_utcoffset = tomorrow.utcoffset()
+    tm_utcoffset = tm.utcoffset()
+    assert tomorrow_utcoffset is not None
+    assert tm_utcoffset is not None  # mypy hints
+    diff = tomorrow_utcoffset - tm_utcoffset
     # Если есть, то компенсируем
     if diff:
         tomorrow -= diff

@@ -1,11 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 import os
 from typing import Dict, Tuple, Any, List
 from datetime import date, timedelta
 
-from tabun_stat import utils
+from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
@@ -20,10 +17,11 @@ class CommentsCountsAvgProcessor(BaseProcessor):
         self._counts = {}  # type: Dict[Tuple[int, int], List[int]]
         self._days = {}  # type: Dict[Tuple[int, int], int]
 
-    def process_comment(self, comment: Dict[str, Any]) -> None:
+    def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
-        day = comment['created_at_local'].date()
-        hour = comment['created_at_local'].hour
+        assert comment.created_at_local is not None
+        day = comment.created_at_local.date()
+        hour = comment.created_at_local.hour
 
         # Если это самый первый коммент, поступивший на обработку, то
         # инициализиуем всю статистику
