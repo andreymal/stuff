@@ -1,26 +1,27 @@
 import typing
-from typing import Optional, Dict, Any
 from datetime import datetime
 
 from tabun_stat import types
 
 if typing.TYPE_CHECKING:
-    from tabun_stat.stat import TabunStat  # pylint: disable=W0611
+    from tabun_stat.stat import TabunStat
 
 
 class BaseProcessor:
     def __init__(self) -> None:
-        self.stat = None  # type: Optional['TabunStat']
-        self.min_date = None  # type: Optional[datetime]
-        self.max_date = None  # type: Optional[datetime]
+        self.stat: "TabunStat" | None = None
+        self.min_date: datetime | None = None
+        self.max_date: datetime | None = None
         self._used = False
 
     def start(
-        self, stat: 'TabunStat',
-        min_date: Optional[datetime] = None, max_date: Optional[datetime] = None
+        self,
+        stat: "TabunStat",
+        min_date: datetime | None = None,
+        max_date: datetime | None = None,
     ) -> None:
         if self._used:
-            raise RuntimeError('Cannot use processor many times')
+            raise RuntimeError("Cannot use processor many times")
         self._used = True
 
         assert stat

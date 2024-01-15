@@ -1,47 +1,51 @@
 import os
 from dataclasses import dataclass
-from typing import Optional, List, Dict, Tuple, Any, Set, Iterable, TextIO
 from datetime import date, datetime, timedelta
+from typing import IO, Any, Iterable
 
 from tabun_stat import types, utils
-from tabun_stat.stat import TabunStat
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 @dataclass
 class ActivityStat:
     __slots__ = (
-        'activity',
-        'users_with_posts',
-        'users_with_comments',
-        'fp',
+        "activity",
+        "users_with_posts",
+        "users_with_comments",
+        "fp",
     )
 
     # Список активности по дням. Каждый элемент — множество айдишников
     # пользователей, активных в этот день
     # (количество хранимых дней ограничено максимальным периодом в опции periods)
-    activity: List[Tuple[Set[int], Set[int]]]
+    activity: list[tuple[set[int], set[int]]]
 
     # Айдишники юзеров с постами за всё время
-    users_with_posts: Set[int]
+    users_with_posts: set[int]
 
     # Айдишники юзеров с комментами за всё время
-    users_with_comments: Set[int]
+    users_with_comments: set[int]
 
     # Файл, в который будет записываться статистика по окончании очередного дня
-    fp: Optional[TextIO]
+    fp: IO[str] | None
 
 
 class ActivityProcessor(BaseProcessor):
-    def __init__(self, periods: Iterable[int] = (1, 7, 30), ratings: Iterable[Optional[float]] = (None, 0.0)) -> None:
+    def __init__(
+        self,
+        periods: Iterable[int] = (1, 7, 30),
+        ratings: Iterable[float | None] = (None, 0.0),
+    ):
         super().__init__()
-        self.periods = tuple(periods)  # type: Tuple[int, ...]
-        self._max_period = max(self.periods)  # type: int
+        self.periods: tuple[int, ...] = tuple(periods)
+        self._max_period = max(self.periods)
 
         # Ключом словаря является минимальный рейтинг записываемых в статистику
         # пользователей — таким образом можно отсеять из общей статистики
         # заминусованных спамеров. В ключе None записываются все пользователи.
-        self._ratings: Dict[Optional[float], ActivityStat] = {}
+        self._ratings: dict[float | None, ActivityStat] = {}
         for rating in ratings:
             if rating is not None:
                 rating = float(rating)
@@ -52,29 +56,31 @@ class ActivityProcessor(BaseProcessor):
                 fp=None,
             )
 
-        self._user_ratings = {}  # type: Dict[int, float]
+        self._user_ratings: dict[int, float] = {}
 
-        self._last_day = None  # type: Optional[date]
+        self._last_day: date | None = None
 
     def start(
-        self, stat: TabunStat,
-        min_date: Optional[datetime] = None, max_date: Optional[datetime] = None
+        self,
+        stat: TabunStat,
+        min_date: datetime | None = None,
+        max_date: datetime | None = None,
     ) -> None:
         super().start(stat, min_date, max_date)
         assert self.stat
 
-        header = ['Дата']
+        header = ["Дата"]
         for period in self.periods:
             if period == 1:
-                header.append('Активны в этот день')
+                header.append("Активны в этот день")
             else:
-                header.append('Активны в последние {} дней'.format(period))
+                header.append(f"Активны в последние {period} дней")
 
         for rating, item in self._ratings.items():
-            filename = 'activity.csv'
+            filename = "activity.csv"
             if rating is not None:
-                filename = 'activity_{:.2f}.csv'.format(rating)
-            item.fp = open(os.path.join(self.stat.destination, filename), 'w', encoding='utf-8')
+                filename = f"activity_{rating:.2f}.csv"
+            item.fp = open(os.path.join(self.stat.destination, filename), "w", encoding="utf-8")
             item.fp.write(utils.csvline(*header))
 
     def process_user(self, user: types.User) -> None:
@@ -88,7 +94,7 @@ class ActivityProcessor(BaseProcessor):
         if post.author_id in self._user_ratings:
             rating = self._user_ratings[post.author_id]
         else:
-            self.stat.log(0, 'WARNING: unknown author {} of post {}'.format(post.author_id, post.id))
+            self.stat.log(0, f"WARNING: unknown author {post.author_id} of post {post.id}")
             rating = 0.0
 
         self._put_activity(0, post.author_id, post.created_at_local, rating)
@@ -100,7 +106,7 @@ class ActivityProcessor(BaseProcessor):
         if comment.author_id in self._user_ratings:
             rating = self._user_ratings[comment.author_id]
         else:
-            self.stat.log(0, 'WARNING: unknown author {} of comment {}'.format(comment.author_id, comment.id))
+            self.stat.log(0, f"WARNING: unknown author {comment.author_id} of comment {comment.id}")
             rating = 0.0
 
         self._put_activity(1, comment.author_id, comment.created_at_local, rating)
@@ -132,7 +138,7 @@ class ActivityProcessor(BaseProcessor):
                 # Удаляем лишние старые дни и добавляем новый день
                 for item in self._ratings.values():
                     if self._max_period > 1:
-                        del item.activity[:-(self._max_period - 1)]
+                        del item.activity[: -(self._max_period - 1)]
                         item.activity.append((set(), set()))
                     else:
                         item.activity[0][0].clear()
@@ -144,11 +150,11 @@ class ActivityProcessor(BaseProcessor):
             item.activity[-1][idx].add(user_id)
 
     def _flush_activity(self, item: ActivityStat) -> None:
-        stat = [str(self._last_day)]  # type: List[Any]
+        stat: list[Any] = [str(self._last_day)]
 
         for period in self.periods:
             # Собираем все id за последние period дней
-            all_users = set()  # type: Set[int]
+            all_users: set[int] = set()
 
             for a, b in item.activity[-period:]:
                 all_users = all_users | a | b
@@ -172,28 +178,38 @@ class ActivityProcessor(BaseProcessor):
                 item.fp = None
 
         for rating, item in self._ratings.items():
-            filename = 'active_users.txt'
+            filename = "active_users.txt"
             if rating is not None:
-                filename = 'active_users_{:.2f}.txt'.format(rating)
+                filename = f"active_users_{rating:.2f}.txt"
 
             if rating is None:
                 users_all = len(self._user_ratings)
             else:
                 users_all = len([x for x in self._user_ratings.values() if x >= rating])
 
-            with open(os.path.join(self.stat.destination, filename), 'w', encoding='utf-8') as fp:
+            with open(os.path.join(self.stat.destination, filename), "w", encoding="utf-8") as fp:
                 if rating is not None:
-                    fp.write(f'# Статистика пользователей с рейтингом {rating:.2f} и больше\n\n')
+                    fp.write(f"# Статистика пользователей с рейтингом {rating:.2f} и больше\n\n")
                 else:
-                    fp.write('# Статистика пользователей с любым рейтингом\n\n')
+                    fp.write("# Статистика пользователей с любым рейтингом\n\n")
 
-                fp.write('Всего юзеров: {}\n'.format(users_all))
-                fp.write('Юзеров с постами: {}\n'.format(len(item.users_with_posts)))
-                fp.write('Юзеров с комментами: {}\n'.format(len(item.users_with_comments)))
-                fp.write('Юзеров с постами и комментами: {}\n'.format(len(item.users_with_posts & item.users_with_comments)))
-                fp.write('Юзеров с постами или комментами: {}\n'.format(len(item.users_with_posts | item.users_with_comments)))
-                fp.write('Юзеров без постов и без комментов: {}\n'.format(users_all - len(item.users_with_posts | item.users_with_comments)))
-                fp.write('Юзеров с постами, но без комментов: {}\n'.format(len(item.users_with_posts - item.users_with_comments)))
-                fp.write('Юзеров с комментами, но без постов: {}\n'.format(len(item.users_with_comments - item.users_with_posts)))
+                fp.write(f"Всего юзеров: {users_all}\n")
+                fp.write(f"Юзеров с постами: {len(item.users_with_posts)}\n")
+                fp.write(f"Юзеров с комментами: {len(item.users_with_comments)}\n")
+                fp.write(
+                    f"Юзеров с постами и комментами: {len(item.users_with_posts & item.users_with_comments)}\n"
+                )
+                fp.write(
+                    f"Юзеров с постами или комментами: {len(item.users_with_posts | item.users_with_comments)}\n"
+                )
+                fp.write(
+                    f"Юзеров без постов и без комментов: {users_all - len(item.users_with_posts | item.users_with_comments)}\n"
+                )
+                fp.write(
+                    f"Юзеров с постами, но без комментов: {len(item.users_with_posts - item.users_with_comments)}\n"
+                )
+                fp.write(
+                    f"Юзеров с комментами, но без постов: {len(item.users_with_comments - item.users_with_posts)}\n"
+                )
 
         super().stop()

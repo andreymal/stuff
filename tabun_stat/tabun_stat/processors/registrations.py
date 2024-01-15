@@ -1,5 +1,4 @@
 import os
-from typing import Dict
 from datetime import date, timedelta
 
 from tabun_stat import types, utils
@@ -10,9 +9,9 @@ class RegistrationsProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
 
-        self._stat = {}  # type: Dict[date, int]
-        self._stat_gte_minus20 = {}  # type: Dict[date, int]
-        self._stat_gte_plus20 = {}  # type: Dict[date, int]
+        self._stat: dict[date, int] = {}
+        self._stat_gte_minus20: dict[date, int] = {}
+        self._stat_gte_plus20: dict[date, int] = {}
 
     def process_user(self, user: types.User) -> None:
         assert user.registered_at_local is not None
@@ -41,14 +40,16 @@ class RegistrationsProcessor(BaseProcessor):
         day = min(self._stat)
         max_day = max(self._stat)
 
-        with open(os.path.join(self.stat.destination, 'registrations.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline(
-                'Дата',
-                'Новые пользователи',
-                'Всего пользователей',
-                'Всего с рейтингом больше -20',
-                'Всего с рейтингом больше +20'
-            ))
+        with open(os.path.join(self.stat.destination, "registrations.csv"), "w", encoding="utf-8") as fp:
+            fp.write(
+                utils.csvline(
+                    "Дата",
+                    "Новые пользователи",
+                    "Всего пользователей",
+                    "Всего с рейтингом больше -20",
+                    "Всего с рейтингом больше +20",
+                )
+            )
 
             all_users = 0
             all_users_gte_minus20 = 0
@@ -64,12 +65,10 @@ class RegistrationsProcessor(BaseProcessor):
                 all_users_gte_minus20 += self._stat_gte_minus20.get(day, 0)
                 all_users_gte_plus20 += self._stat_gte_plus20.get(day, 0)
 
-                fp.write(utils.csvline(
-                    day,
-                    self._stat.get(day, 0),
-                    all_users,
-                    all_users_gte_minus20,
-                    all_users_gte_plus20
-                ))
+                fp.write(
+                    utils.csvline(
+                        day, self._stat.get(day, 0), all_users, all_users_gte_minus20, all_users_gte_plus20
+                    )
+                )
 
                 day += timedelta(days=1)

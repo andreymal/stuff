@@ -1,7 +1,7 @@
-import time
 import importlib
+import time
 from datetime import datetime, timedelta
-from typing import Any, List, Optional, Iterable, Generator, TypeVar, Union
+from typing import Any, Generator, Iterable, TypeVar
 
 import pytz
 
@@ -9,18 +9,21 @@ T = TypeVar("T")
 
 
 def import_string(s: str) -> Any:
-    if '.' not in s:
-        raise ValueError('import_string can import only objects using dot')
+    if "." not in s:
+        raise ValueError("import_string can import only objects using dot")
 
-    module_name, attr = s.rsplit('.', 1)
+    module_name, attr = s.rsplit(".", 1)
     module = importlib.import_module(module_name)
     return getattr(module, attr)
 
 
 def csvline(
-    *args: Any, end: str = '\n', delimeter: str = ',',
-    quote: str = '"', always_quote: bool = False,
-    slash_escape: bool = False
+    *args: Any,
+    end: str = "\n",
+    delimeter: str = ",",
+    quote: str = '"',
+    always_quote: bool = False,
+    slash_escape: bool = False,
 ) -> str:
     """Возвращает строку, пригодную для записи в csv-файл.
 
@@ -34,16 +37,16 @@ def csvline(
     :rtype: str
     """
 
-    result = []  # type: List[str]
+    result: list[str] = []
 
     for x in args:
         if result:
             result.append(delimeter)
         x = str(x)
 
-        if always_quote or quote in x or '\n' in x:
+        if always_quote or quote in x or "\n" in x:
             if slash_escape:
-                x = x.replace(quote, '\\' + quote)
+                x = x.replace(quote, "\\" + quote)
             else:
                 x = x.replace(quote, quote + quote)
             x = quote + x + quote
@@ -52,14 +55,20 @@ def csvline(
 
     result.append(end)
 
-    return ''.join(result)
+    return "".join(result)
 
 
 def progress_drawer(
-    target: int, w: int = 30, progress_chars: Optional[str] = None,
-    lb: Optional[str] = None, rb: Optional[str] = None, humanize: bool = False,
-    show_count: bool = False, fps: float = 25.0, use_unicode: bool = False
-) -> Generator[Optional[str], Optional[int], None]:
+    target: int,
+    w: int = 30,
+    progress_chars: str | None = None,
+    lb: str | None = None,
+    rb: str | None = None,
+    humanize: bool = False,
+    show_count: bool = False,
+    fps: float = 25.0,
+    use_unicode: bool = False,
+) -> Generator[str | None, int | None, None]:
     """Подготавливает всё для рисования полоски прогресса и возвращает
     сопрограмму, в которую следует передавать текущий прогресс.
 
@@ -100,27 +109,27 @@ def progress_drawer(
     # Выбираем, какими символами будем рисовать полоску
     if not progress_chars:
         if use_unicode:
-            progress_chars = ' ▏▎▍▌▋▊▉█'
+            progress_chars = " ▏▎▍▌▋▊▉█"
         else:
-            progress_chars = ' -#'
+            progress_chars = " -#"
     if lb is None:
-        lb = '▕' if use_unicode else ' ['
+        lb = "▕" if use_unicode else " ["
     if rb is None:
-        rb = '▏' if use_unicode else '] '
+        rb = "▏" if use_unicode else "] "
 
     min_period = 0.0
     if fps > 0.0:
         min_period = 1.0 / fps  # для 25 fps это 0.04
 
-    current = 0  # type: Optional[int]
-    old_current = None  # type: Optional[int]
-    old_line = ''
+    current: int | None = 0
+    old_current: int | None = None
+    old_line = ""
 
     tm = 0.0
     lastlen = 0
 
     while current is not None:
-        text_for_print = None  # type: Optional[str]
+        text_for_print: str | None = None
 
         # Умная математика, сколько каких блоков выводить
         part = (current * 1.0 / target) if target > 0 else 1.0
@@ -137,14 +146,14 @@ def progress_drawer(
         # Готовим строку с числовой информацией о прогрессе, чтобы вывести после полоски
         if show_count:
             if humanize:
-                cnt_string = '({}K/{}K) '.format(int(current / 1024.0), int(target / 1024.0))
+                cnt_string = "({}K/{}K) ".format(int(current / 1024.0), int(target / 1024.0))
             else:
-                cnt_string = '({}/{}) '.format(current, target)
+                cnt_string = "({}/{}) ".format(current, target)
         else:
             if humanize:
-                cnt_string = '({}K) '.format(int(current / 1024.0))
+                cnt_string = "({}K) ".format(int(current / 1024.0))
             else:
-                cnt_string = '({}) '.format(current)
+                cnt_string = "({}) ".format(current)
 
         # Обновляем полоску:
         # - только когда значение новое
@@ -161,7 +170,7 @@ def progress_drawer(
                 line += progress_chars[part_block_num]
             line += progress_chars[0] * empty_blocks
             line += rb
-            line += '{:.1f}% '.format(int(part * 1000) / 10.0).rjust(7)
+            line += "{:.1f}% ".format(int(part * 1000) / 10.0).rjust(7)
             line += cnt_string
 
             # Печатаем её (только если полоска вообще изменилась)
@@ -182,17 +191,17 @@ def fprint_substring(s: str, l: int = 0) -> str:
     l символов.
     """
 
-    result = []  # type: List[str]
+    result: list[str] = []
     if l > 0:
-        result.append('\b' * l)
+        result.append("\b" * l)
     result.append(s)
     if len(s) < l:
-        result.append(' ' * (l - len(s)))
-        result.append('\b' * (l - len(s)))
-    return ''.join(result)
+        result.append(" " * (l - len(s)))
+        result.append("\b" * (l - len(s)))
+    return "".join(result)
 
 
-def format_timedelta(tm: Union[int, float, timedelta]) -> str:
+def format_timedelta(tm: int | float | timedelta) -> str:
     if isinstance(tm, timedelta):
         tm = tm.total_seconds()
     tm = int(tm)
@@ -202,18 +211,18 @@ def format_timedelta(tm: Union[int, float, timedelta]) -> str:
         minus = True
         tm = -tm
 
-    s = '{:02d}s'.format(tm % 60)
+    s = f"{tm % 60:02d}s"
     if tm >= 60:
-        s = '{:02d}m'.format((tm // 60) % 60) + s
+        s = f"{(tm // 60) % 60:02d}m{s}"
     if tm >= 3600:
-        s = '{}h'.format(tm // 3600) + s
+        s = f"{tm // 3600}h{s}"
 
     if minus:
-        s = '-' + s
+        s = f"-{s}"
     return s
 
 
-def apply_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None) -> datetime:
+def apply_tzinfo(tm: datetime, tzinfo: str | pytz.BaseTzInfo | None = None) -> datetime:
     """Применяет часовой пояс ко времени, перематывая время на нужное число
     часов/минут.
 
@@ -226,7 +235,7 @@ def apply_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None)
         tzinfo = pytz.timezone(tzinfo)
 
     if not tzinfo:
-        tzinfo = pytz.timezone('UTC')
+        tzinfo = pytz.timezone("UTC")
     assert isinstance(tzinfo, pytz.BaseTzInfo)
 
     if not tm.tzinfo:
@@ -237,10 +246,10 @@ def apply_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None)
 
 
 def force_utc(tm: datetime) -> datetime:
-    return apply_tzinfo(tm, pytz.timezone('UTC'))
+    return apply_tzinfo(tm, pytz.timezone("UTC"))
 
 
-def set_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None, is_dst: bool = False) -> datetime:
+def set_tzinfo(tm: datetime, tzinfo: str | pytz.BaseTzInfo | None = None, is_dst: bool = False) -> datetime:
     """Прикрепляет часовой пояс к объекту datetime, который без пояса.
     Возвращает объект datetime с прикреплённым часовым поясом, но значение
     (в частности, день и час), остаются теми же, что и были.
@@ -257,13 +266,13 @@ def set_tzinfo(tm: datetime, tzinfo: Union[str, pytz.BaseTzInfo, None] = None, i
     """
 
     if tm.tzinfo:
-        raise ValueError('datetime already has tzinfo')
+        raise ValueError("datetime already has tzinfo")
 
     if tzinfo and isinstance(tzinfo, str):
         tzinfo = pytz.timezone(tzinfo)
 
     if not tzinfo:
-        tzinfo = pytz.timezone('UTC')
+        tzinfo = pytz.timezone("UTC")
     assert isinstance(tzinfo, pytz.BaseTzInfo)
 
     return tzinfo.localize(tm, is_dst=is_dst)
@@ -277,7 +286,7 @@ def append_days(tm: datetime, days: int) -> datetime:
         return tm + timedelta(days=days)
 
     if not isinstance(tm.tzinfo, pytz.BaseTzInfo):
-        raise ValueError('Expected pytz tzinfo')
+        raise ValueError("Expected pytz tzinfo")
 
     # Добавляем days*24 часов пока без учёта пояса
     tomorrow = tm + timedelta(days=days)
@@ -303,8 +312,8 @@ def append_days(tm: datetime, days: int) -> datetime:
     # append_days(d, 1)  # => 2014-10-27 00:00:00+03:00
 
 
-def drop_duplicates(items: Iterable[T]) -> List[T]:
-    result: List[T] = []
+def drop_duplicates(items: Iterable[T]) -> list[T]:
+    result: list[T] = []
     for item in items:
         if item not in result:
             result.append(item)

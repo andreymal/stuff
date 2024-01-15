@@ -1,6 +1,5 @@
 import os
 from dataclasses import dataclass
-from typing import Dict, List
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
@@ -9,8 +8,8 @@ from tabun_stat.processors.base import BaseProcessor
 @dataclass
 class DiceStat:
     __slots__ = (
-        'publications_count',
-        'dices_count',
+        "publications_count",
+        "dices_count",
     )
 
     # Число публикаций с дайсами у этого пользователя
@@ -22,7 +21,7 @@ class DiceStat:
 class DicesProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
-        self._dices: Dict[int, DiceStat] = {}
+        self._dices: dict[int, DiceStat] = {}
 
     def process_post(self, post: types.Post) -> None:
         if '<span class="dice">' not in post.body:
@@ -46,19 +45,25 @@ class DicesProcessor(BaseProcessor):
     def stop(self) -> None:
         assert self.stat
 
-        with open(os.path.join(self.stat.destination, 'dices.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline('ID юзера', 'Пользователь', 'Сколько публикаций с дайсами', 'Сколько раз брошены дайсы'))
+        with open(os.path.join(self.stat.destination, "dices.csv"), "w", encoding="utf-8") as fp:
+            fp.write(
+                utils.csvline(
+                    "ID юзера", "Пользователь", "Сколько публикаций с дайсами", "Сколько раз брошены дайсы"
+                )
+            )
             info = sorted(
                 self._dices.items(),
                 key=lambda x: (x[1].publications_count, x[1].dices_count, -x[0]),
                 reverse=True,
             )
             for user_id, st in info:
-                fp.write(utils.csvline(
-                    user_id,
-                    self.stat.source.get_username_by_user_id(user_id),
-                    st.publications_count,
-                    st.dices_count,
-                ))
+                fp.write(
+                    utils.csvline(
+                        user_id,
+                        self.stat.source.get_username_by_user_id(user_id),
+                        st.publications_count,
+                        st.dices_count,
+                    )
+                )
 
         super().stop()

@@ -1,9 +1,8 @@
-from typing import Optional, Iterator, List, Dict, Any
+from typing import Any, Iterator
 
 from tabun_stat import types
 
-
-__all__ = ['DataNotFound', 'BaseDataSource']
+__all__ = ["DataNotFound", "BaseDataSource"]
 
 
 class DataNotFound(Exception):
@@ -28,7 +27,7 @@ class BaseDataSource:
         """
         raise NotImplementedError
 
-    def iter_users(self, filters: Optional[Dict[str, Any]] = None) -> Iterator[List[types.User]]:
+    def iter_users(self, filters: dict[str, Any] | None = None) -> Iterator[list[types.User]]:
         """По очереди yield'ит всех существующих пользователей. Если указаны
         фильтры, то с учётом их ограничений. Должны быть реализованы следующие
         фильтры:
@@ -50,17 +49,17 @@ class BaseDataSource:
             except DataNotFound:
                 continue
 
-            if filters and 'user_id__lt' in filters:
-                if user.id >= filters['user_id__lt']:
+            if filters and "user_id__lt" in filters:
+                if user.id >= filters["user_id__lt"]:
                     continue
-            if filters and 'user_id__lte' in filters:
-                if user.id > filters['user_id__lte']:
+            if filters and "user_id__lte" in filters:
+                if user.id > filters["user_id__lte"]:
                     continue
-            if filters and 'user_id__gt' in filters:
-                if user.id <= filters['user_id__gt']:
+            if filters and "user_id__gt" in filters:
+                if user.id <= filters["user_id__gt"]:
                     continue
-            if filters and 'user_id__gte' in filters:
-                if user.id < filters['user_id__gte']:
+            if filters and "user_id__gte" in filters:
+                if user.id < filters["user_id__gte"]:
                     continue
 
             yield [user]
@@ -69,7 +68,7 @@ class BaseDataSource:
         """Возвращает имя пользователя по его id."""
         return self.get_user_by_id(user_id).username
 
-    def get_users_limits(self, filters: Optional[Dict[str, Any]] = None) -> types.UsersLimits:
+    def get_users_limits(self, filters: dict[str, Any] | None = None) -> types.UsersLimits:
         """Возвращает статистику о всех существующих пользователях. Если
         указаны фильтры, то с учётом их ограничений.
         """
@@ -89,7 +88,7 @@ class BaseDataSource:
         """
         raise NotImplementedError
 
-    def get_blog_status_by_id(self, blog_id: Optional[int]) -> int:
+    def get_blog_status_by_id(self, blog_id: int | None) -> int:
         """Возвращает статус блога по его id. 0 - открытый блог,
         1 - закрытый, 2 - полузакрытый.
 
@@ -100,7 +99,7 @@ class BaseDataSource:
             return 0
         return self.get_blog_by_id(blog_id).status
 
-    def get_blog_status_by_slug(self, slug: Optional[str]) -> int:
+    def get_blog_status_by_slug(self, slug: str | None) -> int:
         """Возвращает статус блога по его slug. 0 - открытый блог,
         1 - закрытый, 2 - полузакрытый.
 
@@ -115,13 +114,13 @@ class BaseDataSource:
         """Возвращает id блога по его slug."""
         return self.get_blog_by_slug(slug).id
 
-    def get_blog_id_of_post(self, post_id: int) -> Optional[int]:
+    def get_blog_id_of_post(self, post_id: int) -> int | None:
         """Возвращает id блога, в котором находится указанный пост.
         Если в личном блоге, то None.
         """
         return self.get_post_by_id(post_id).blog_id
 
-    def iter_blogs(self, filters: Optional[Dict[str, Any]] = None) -> Iterator[List[types.Blog]]:
+    def iter_blogs(self, filters: dict[str, Any] | None = None) -> Iterator[list[types.Blog]]:
         """По очереди yield'ит все существующие блоги. Если указаны фильтры,
         то с учётом их ограничений. Должны быть реализованы следующие фильтры:
 
@@ -141,22 +140,22 @@ class BaseDataSource:
             except DataNotFound:
                 continue
 
-            if filters and 'blog_id__lt' in filters:
-                if blog.id >= filters['blog_id__lt']:
+            if filters and "blog_id__lt" in filters:
+                if blog.id >= filters["blog_id__lt"]:
                     continue
-            if filters and 'blog_id__lte' in filters:
-                if blog.id > filters['blog_id__lte']:
+            if filters and "blog_id__lte" in filters:
+                if blog.id > filters["blog_id__lte"]:
                     continue
-            if filters and 'blog_id__gt' in filters:
-                if blog.id <= filters['blog_id__gt']:
+            if filters and "blog_id__gt" in filters:
+                if blog.id <= filters["blog_id__gt"]:
                     continue
-            if filters and 'blog_id__gte' in filters:
-                if blog.id < filters['blog_id__gte']:
+            if filters and "blog_id__gte" in filters:
+                if blog.id < filters["blog_id__gte"]:
                     continue
 
             yield [blog]
 
-    def get_blogs_limits(self, filters: Optional[Dict[str, Any]] = None) -> types.BlogsLimits:
+    def get_blogs_limits(self, filters: dict[str, Any] | None = None) -> types.BlogsLimits:
         """Возвращает статистику о всех существующих блогах. Если указаны
         фильтры, то с учётом их ограничений.
         """
@@ -174,7 +173,11 @@ class BaseDataSource:
         """
         raise NotImplementedError
 
-    def iter_posts(self, with_comments: bool = False, filters: Optional[Dict[str, Any]] = None) -> Iterator[List[types.Post]]:
+    def iter_posts(
+        self,
+        with_comments: bool = False,
+        filters: dict[str, Any] | None = None,
+    ) -> Iterator[list[types.Post]]:
         """По очереди yield'ит все существующие посты. Если указаны фильтры,
         то с учётом их ограничений. Должны быть реализованы следующие фильтры:
 
@@ -196,35 +199,35 @@ class BaseDataSource:
             except DataNotFound:
                 continue
 
-            if filters and 'post_id__lt' in filters:
-                if post.id >= filters['post_id__lt']:
+            if filters and "post_id__lt" in filters:
+                if post.id >= filters["post_id__lt"]:
                     continue
-            if filters and 'post_id__lte' in filters:
-                if post.id > filters['post_id__lte']:
+            if filters and "post_id__lte" in filters:
+                if post.id > filters["post_id__lte"]:
                     continue
-            if filters and 'post_id__gt' in filters:
-                if post.id <= filters['post_id__gt']:
+            if filters and "post_id__gt" in filters:
+                if post.id <= filters["post_id__gt"]:
                     continue
-            if filters and 'post_id__gte' in filters:
-                if post.id < filters['post_id__gte']:
+            if filters and "post_id__gte" in filters:
+                if post.id < filters["post_id__gte"]:
                     continue
 
-            if filters and 'created_at__lt' in filters:
-                if not post.created_at or post.created_at >= filters['created_at__lt']:
+            if filters and "created_at__lt" in filters:
+                if not post.created_at or post.created_at >= filters["created_at__lt"]:
                     continue
-            if filters and 'created_at__lte' in filters:
-                if not post.created_at or post.created_at > filters['created_at__lte']:
+            if filters and "created_at__lte" in filters:
+                if not post.created_at or post.created_at > filters["created_at__lte"]:
                     continue
-            if filters and 'created_at__gt' in filters:
-                if not post.created_at or post.created_at <= filters['created_at__gt']:
+            if filters and "created_at__gt" in filters:
+                if not post.created_at or post.created_at <= filters["created_at__gt"]:
                     continue
-            if filters and 'created_at__gte' in filters:
-                if not post.created_at or post.created_at < filters['created_at__gte']:
+            if filters and "created_at__gte" in filters:
+                if not post.created_at or post.created_at < filters["created_at__gte"]:
                     continue
 
             yield [post]
 
-    def get_posts_limits(self, filters: Optional[Dict[str, Any]] = None) -> types.PostsLimits:
+    def get_posts_limits(self, filters: dict[str, Any] | None = None) -> types.PostsLimits:
         """Возвращает статистику о всех существующих постах. Если указаны
         фильтры, то с учётом их ограничений.
         """
@@ -238,13 +241,16 @@ class BaseDataSource:
         """
         raise NotImplementedError
 
-    def get_post_comments(self, post_id: int) -> List[types.Comment]:
+    def get_post_comments(self, post_id: int) -> list[types.Comment]:
         """Возвращает список комментариев для данного поста.
         Если пост не найден, выбрасывает ошибку DataNotFound.
         """
         raise NotImplementedError
 
-    def iter_comments(self, filters: Optional[Dict[str, Any]] = None) -> Iterator[List[types.Comment]]:
+    def iter_comments(
+        self,
+        filters: dict[str, Any] | None = None,
+    ) -> Iterator[list[types.Comment]]:
         """По очереди yield'ит все существующие комменты. Если указаны фильтры,
         то с учётом их ограничений. Должны быть реализованы следующие фильтры:
 
@@ -269,48 +275,48 @@ class BaseDataSource:
             except DataNotFound:
                 continue
 
-            if filters and 'comment_id__lt' in filters:
-                if comment.id >= filters['comment_id__lt']:
+            if filters and "comment_id__lt" in filters:
+                if comment.id >= filters["comment_id__lt"]:
                     continue
-            if filters and 'comment_id__lte' in filters:
-                if comment.id > filters['comment_id__lte']:
+            if filters and "comment_id__lte" in filters:
+                if comment.id > filters["comment_id__lte"]:
                     continue
-            if filters and 'comment_id__gt' in filters:
-                if comment.id <= filters['comment_id__gt']:
+            if filters and "comment_id__gt" in filters:
+                if comment.id <= filters["comment_id__gt"]:
                     continue
-            if filters and 'comment_id__gte' in filters:
-                if comment.id < filters['comment_id__gte']:
-                    continue
-
-            if filters and 'post_id__lt' in filters:
-                if comment.id >= filters['post_id__lt']:
-                    continue
-            if filters and 'post_id__lte' in filters:
-                if comment.id > filters['post_id__lte']:
-                    continue
-            if filters and 'post_id__gt' in filters:
-                if comment.id <= filters['post_id__gt']:
-                    continue
-            if filters and 'post_id__gte' in filters:
-                if comment.id < filters['post_id__gte']:
+            if filters and "comment_id__gte" in filters:
+                if comment.id < filters["comment_id__gte"]:
                     continue
 
-            if filters and 'created_at__lt' in filters:
-                if not comment.created_at or comment.created_at >= filters['created_at__lt']:
+            if filters and "post_id__lt" in filters:
+                if comment.id >= filters["post_id__lt"]:
                     continue
-            if filters and 'created_at__lte' in filters:
-                if not comment.created_at or comment.created_at > filters['created_at__lte']:
+            if filters and "post_id__lte" in filters:
+                if comment.id > filters["post_id__lte"]:
                     continue
-            if filters and 'created_at__gt' in filters:
-                if not comment.created_at or comment.created_at <= filters['created_at__gt']:
+            if filters and "post_id__gt" in filters:
+                if comment.id <= filters["post_id__gt"]:
                     continue
-            if filters and 'created_at__gte' in filters:
-                if not comment.created_at or comment.created_at < filters['created_at__gte']:
+            if filters and "post_id__gte" in filters:
+                if comment.id < filters["post_id__gte"]:
+                    continue
+
+            if filters and "created_at__lt" in filters:
+                if not comment.created_at or comment.created_at >= filters["created_at__lt"]:
+                    continue
+            if filters and "created_at__lte" in filters:
+                if not comment.created_at or comment.created_at > filters["created_at__lte"]:
+                    continue
+            if filters and "created_at__gt" in filters:
+                if not comment.created_at or comment.created_at <= filters["created_at__gt"]:
+                    continue
+            if filters and "created_at__gte" in filters:
+                if not comment.created_at or comment.created_at < filters["created_at__gte"]:
                     continue
 
             yield [comment]
 
-    def get_comments_limits(self, filters: Optional[Dict[str, Any]] = None) -> types.CommentsLimits:
+    def get_comments_limits(self, filters: dict[str, Any] | None = None) -> types.CommentsLimits:
         """Возвращает статистику о всех существующих комментах. Если указаны
         фильтры, то с учётом их ограничений.
         """

@@ -1,5 +1,4 @@
 import os
-from typing import Dict
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
@@ -8,7 +7,7 @@ from tabun_stat.processors.base import BaseProcessor
 class CommentsRatingsProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
-        self._stat = {}  # type: Dict[int, Dict[int, int]]
+        self._stat: dict[int, dict[int, int]] = {}
 
     def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
@@ -34,11 +33,11 @@ class CommentsRatingsProcessor(BaseProcessor):
             min_rating = min(min(votes_dict), min_rating)
             max_rating = max(max(votes_dict), max_rating)
 
-        header = ['Рейтинг', 'За всё время']
+        header = ["Рейтинг", "За всё время"]
         for year in sorted(self._stat):
-            header.append('{} год'.format(year))
+            header.append(f"{year} год")
 
-        with open(os.path.join(self.stat.destination, 'comments_ratings.csv'), 'w', encoding='utf-8') as fp:
+        with open(os.path.join(self.stat.destination, "comments_ratings.csv"), "w", encoding="utf-8") as fp:
             fp.write(utils.csvline(*header))
             for vote in range(min_rating, max_rating + 1):
                 line = [vote, 0]

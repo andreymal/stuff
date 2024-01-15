@@ -1,7 +1,5 @@
-from datetime import date, datetime
 from dataclasses import dataclass
-from typing import List, Optional
-
+from datetime import date, datetime
 
 # pylint: disable=too-many-instance-attributes
 
@@ -9,8 +7,8 @@ from typing import List, Optional
 @dataclass
 class UsersLimits:
     count: int
-    first_id: Optional[int]
-    last_id: Optional[int]
+    first_id: int | None
+    last_id: int | None
 
 
 @dataclass
@@ -20,18 +18,18 @@ class User:
     skill: float
     rating: float
     registered_at: datetime
-    registered_at_local: Optional[datetime] = None  # filled automatically by tabun_stat
-    realname: Optional[str] = None
-    gender: Optional[str] = None  # 'M', 'F'
-    birthday: Optional[date] = None
-    description: Optional[str] = None
+    registered_at_local: datetime | None = None  # filled automatically by tabun_stat
+    realname: str | None = None
+    gender: str | None = None  # "M", "F"
+    birthday: date | None = None
+    description: str | None = None
 
 
 @dataclass
 class BlogsLimits:
     count: int
-    first_id: Optional[int]
-    last_id: Optional[int]
+    first_id: int | None
+    last_id: int | None
 
 
 @dataclass
@@ -46,16 +44,16 @@ class Blog:
     vote_count: int
     created_at: datetime
     deleted: bool = False
-    created_at_local: Optional[datetime] = None  # filled automatically by tabun_stat
+    created_at_local: datetime | None = None  # filled automatically by tabun_stat
 
 
 @dataclass
 class PostsLimits:
     count: int
-    first_id: Optional[int]
-    last_id: Optional[int]
-    first_created_at: Optional[datetime]
-    last_created_at: Optional[datetime]
+    first_id: int | None
+    last_id: int | None
+    first_created_at: datetime | None
+    last_created_at: datetime | None
 
 
 @dataclass
@@ -63,27 +61,27 @@ class Post:
     id: int
     created_at: datetime
     author_id: int
-    blog_id: Optional[int]
+    blog_id: int | None
     blog_status: int  # 0 - open or personal, 1 - closed, 2 - semiclosed
     title: str
     vote_count: int
-    vote_value: Optional[int]
+    vote_value: int | None
     body: str
     favorites_count: int
     deleted: bool = False
     draft: bool = False
-    created_at_local: Optional[datetime] = None  # filled automatically by tabun_stat
+    created_at_local: datetime | None = None  # filled automatically by tabun_stat
 
-    comments: Optional[List['Comment']] = None
+    comments: list["Comment"] | None = None
 
 
 @dataclass
 class CommentsLimits:
     count: int
-    first_id: Optional[int]
-    last_id: Optional[int]
-    first_created_at: Optional[datetime]
-    last_created_at: Optional[datetime]
+    first_id: int | None
+    last_id: int | None
+    first_created_at: datetime | None
+    last_created_at: datetime | None
 
 
 @dataclass
@@ -91,10 +89,10 @@ class Comment:
     id: int
     created_at: datetime
     author_id: int
-    post_id: Optional[int]
-    parent_id: Optional[int]
+    post_id: int | None
+    parent_id: int | None
     vote_value: int
     body: str
     favorites_count: int
     deleted: bool = False
-    created_at_local: Optional[datetime] = None  # filled automatically by tabun_stat
+    created_at_local: datetime | None = None  # filled automatically by tabun_stat

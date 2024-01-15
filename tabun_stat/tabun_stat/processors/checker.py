@@ -1,4 +1,3 @@
-from typing import Optional
 from datetime import datetime
 
 from tabun_stat import types
@@ -9,13 +8,14 @@ from tabun_stat.stat import TabunStat
 class CheckerProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
-        self._last_post: Optional[types.Post] = None
-        self._last_comment: Optional[types.Comment] = None
+        self._last_post: types.Post | None = None
+        self._last_comment: types.Comment | None = None
 
     def start(
-        self, stat: TabunStat,
-        min_date: Optional[datetime] = None,
-        max_date: Optional[datetime] = None,
+        self,
+        stat: TabunStat,
+        min_date: datetime | None = None,
+        max_date: datetime | None = None,
     ) -> None:
         super().start(stat, min_date, max_date)
         self._last_post = None
@@ -38,10 +38,13 @@ class CheckerProcessor(BaseProcessor):
         if self._last_post is not None:
             if post.created_at < self._last_post.created_at:
                 self.stat.log(
-                    0, 'WARNING: next post {} {} is from past! (prev post is {} {})'.format(
-                        post.id, post.created_at,
-                        self._last_post.id, self._last_post.created_at,
-                    )
+                    0,
+                    "WARNING: next post {} {} is from past! (prev post is {} {})".format(
+                        post.id,
+                        post.created_at,
+                        self._last_post.id,
+                        self._last_post.created_at,
+                    ),
                 )
         self._last_post = post
 
@@ -51,9 +54,12 @@ class CheckerProcessor(BaseProcessor):
         if self._last_comment is not None:
             if comment.created_at < self._last_comment.created_at:
                 self.stat.log(
-                    0, 'WARNING: next comment {} {} is from past! (prev comment is {} {})'.format(
-                        comment.id, comment.created_at,
-                        self._last_comment.id, self._last_comment.created_at,
-                    )
+                    0,
+                    "WARNING: next comment {} {} is from past! (prev comment is {} {})".format(
+                        comment.id,
+                        comment.created_at,
+                        self._last_comment.id,
+                        self._last_comment.created_at,
+                    ),
                 )
         self._last_comment = comment

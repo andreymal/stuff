@@ -1,27 +1,26 @@
 import os
-from typing import Dict, List
-from datetime import datetime
 from collections import Counter
+from datetime import datetime
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
 
 class CharsProcessor(BaseProcessor):
-    special_names: Dict[str, str] = {
-        '"': 'Кавычка',
-        ',': 'Запятая',
-        ' ': 'Пробел',
-        '\xa0': 'Неразр. пробел',
-        '\t': 'Табуляция',
-        '\n': 'Перенос строки',
-        '\r': 'Возврат каретки',
+    special_names: dict[str, str] = {
+        '"': "Кавычка",
+        ",": "Запятая",
+        " ": "Пробел",
+        "\xa0": "Неразр. пробел",
+        "\t": "Табуляция",
+        "\n": "Перенос строки",
+        "\r": "Возврат каретки",
     }
-    special_eng = 'AOECKPXMaoeckpxmBTHy'
+    special_eng = "AOECKPXMaoeckpxmBTHy"
 
     def __init__(self) -> None:
         super().__init__()
-        self._chars = {}  # type: Dict[str, List[int]]
+        self._chars: dict[str, list[int]] = {}
 
     def process_post(self, post: types.Post) -> None:
         self._process(post.body, post.created_at)
@@ -41,8 +40,8 @@ class CharsProcessor(BaseProcessor):
 
     def stop(self) -> None:
         assert self.stat
-        with open(os.path.join(self.stat.destination, 'chars.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline('Символ', 'Сколько раз встретился'))
+        with open(os.path.join(self.stat.destination, "chars.csv"), "w", encoding="utf-8") as fp:
+            fp.write(utils.csvline("Символ", "Сколько раз встретился"))
 
             for c, x in sorted(self._chars.items(), key=lambda x: [-x[1][0], x[1][1]]):
                 cnt, created_at_unix = x
@@ -55,7 +54,7 @@ class CharsProcessor(BaseProcessor):
                 if c in self.special_names:
                     c = self.special_names[c]
                 elif c in self.special_eng:
-                    c = c + ' (англ.)'
+                    c = c + " (англ.)"
                 elif not c.strip():
                     c = repr(c)
                 fp.write(utils.csvline(c, cnt))

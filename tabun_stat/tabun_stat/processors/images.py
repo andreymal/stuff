@@ -1,13 +1,11 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, List, Optional
 from datetime import datetime
 
 from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
-
 
 img_re = re.compile('<img[^>]+src="([^"]+)".*>', flags=re.U | re.I)
 
@@ -15,14 +13,14 @@ img_re = re.compile('<img[^>]+src="([^"]+)".*>', flags=re.U | re.I)
 @dataclass
 class ImageStat:
     __slots__ = (
-        'host',
-        'host2',
-        'first_date',
-        'last_date',
-        'count',
-        'first_public_date',
-        'last_public_date',
-        'public_count',
+        "host",
+        "host2",
+        "first_date",
+        "last_date",
+        "count",
+        "first_public_date",
+        "last_public_date",
+        "public_count",
     )
 
     # Хост вида foo.bar.example.com
@@ -36,16 +34,16 @@ class ImageStat:
     count: int
 
     # Статитстика только по открытым и полузакрытым
-    first_public_date: Optional[datetime]
-    last_public_date: Optional[datetime]
+    first_public_date: datetime | None
+    last_public_date: datetime | None
     public_count: int
 
 
 @dataclass
 class HostStat:
     __slots__ = (
-        'unique_count',
-        'all_count',
+        "unique_count",
+        "all_count",
     )
 
     # Сколько уникальных ссылок попалось с этим хостом
@@ -59,11 +57,11 @@ class ImagesProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
 
-        self._stat: Dict[str, ImageStat] = {}
-        self._images_list = []  # type: List[str]
+        self._stat: dict[str, ImageStat] = {}
+        self._images_list: list[str] = []
 
-        self._hosts = {}  # type: Dict[str, HostStat]
-        self._hosts2 = {}  # type: Dict[str, HostStat]
+        self._hosts: dict[str, HostStat] = {}
+        self._hosts2: dict[str, HostStat] = {}
 
     def process_post(self, post: types.Post) -> None:
         self._process(post.body, post.blog_status, post.created_at)
@@ -76,7 +74,7 @@ class ImagesProcessor(BaseProcessor):
                 raise DataNotFound
             blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
         except DataNotFound:
-            self.stat.log(0, f'WARNING: images: comment {comment.id} for unknown post {comment.post_id}')
+            self.stat.log(0, f"WARNING: images: comment {comment.id} for unknown post {comment.post_id}")
             return
 
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
@@ -84,19 +82,19 @@ class ImagesProcessor(BaseProcessor):
 
     def _get_host(self, url: str) -> str:
         # https://example.com:80/path → example.com:80/path
-        f = url.find('://')
+        f = url.find("://")
         if f >= 0:
-            host = url[f + 3:]
-        elif url.startswith('//'):
+            host = url[f + 3 :]
+        elif url.startswith("//"):
             host = url[2:]
         else:
             host = url
 
         # example.com:80/path → example.com:80
-        host = host.split('/', 1)[0]
+        host = host.split("/", 1)[0]
 
         # example.com:80 → example.com
-        host = host.split(':', 1)[0]
+        host = host.split(":", 1)[0]
 
         return host
 
@@ -104,13 +102,13 @@ class ImagesProcessor(BaseProcessor):
         host = self._get_host(url)
 
         # a.b.c.d.e → d.e
-        while host.count('.') > 1:
-            host = host[host.find('.') + 1:]
+        while host.count(".") > 1:
+            host = host[host.find(".") + 1 :]
         return host
 
     def _process(self, body: str, blog_status: int, created_at: datetime) -> None:
         body = body.strip()
-        if '<' not in body:
+        if "<" not in body:
             return
 
         images = utils.drop_duplicates(img_re.findall(body))
@@ -125,11 +123,9 @@ class ImagesProcessor(BaseProcessor):
                 stat = ImageStat(
                     host=self._get_host(img),
                     host2=self._get_host2(img),
-
                     first_date=created_at,
                     last_date=created_at,
                     count=0,
-
                     first_public_date=created_at if is_public else None,
                     last_public_date=None,
                     public_count=0,
@@ -164,43 +160,63 @@ class ImagesProcessor(BaseProcessor):
     def stop(self) -> None:
         assert self.stat
 
-        with open(os.path.join(self.stat.destination, 'images.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline(
-                'Картинка',
-                'Первое исп-е',
-                'Первое исп-е на внешке',
-                'Последнее исп-е',
-                'Последнее исп-е на внешке',
-                'Сколько раз',
-                'Сколько раз на внешке'
-            ))
+        with open(os.path.join(self.stat.destination, "images.csv"), "w", encoding="utf-8") as fp:
+            fp.write(
+                utils.csvline(
+                    "Картинка",
+                    "Первое исп-е",
+                    "Первое исп-е на внешке",
+                    "Последнее исп-е",
+                    "Последнее исп-е на внешке",
+                    "Сколько раз",
+                    "Сколько раз на внешке",
+                )
+            )
 
             for img in self._images_list:
                 data = self._stat[img]
-                fp.write(utils.csvline(
-                    img,
-                    data.first_date,
-                    data.first_public_date or '',
-                    data.last_date,
-                    data.last_public_date or '',
-                    data.count,
-                    data.public_count
-                ))
+                fp.write(
+                    utils.csvline(
+                        img,
+                        data.first_date,
+                        data.first_public_date or "",
+                        data.last_date,
+                        data.last_public_date or "",
+                        data.count,
+                        data.public_count,
+                    )
+                )
 
-        with open(os.path.join(self.stat.destination, 'images_hosts.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline('Хост', 'Число уникальных ссылок', 'Общее число использований'))
+        with open(os.path.join(self.stat.destination, "images_hosts.csv"), "w", encoding="utf-8") as fp:
+            fp.write(
+                utils.csvline(
+                    "Хост",
+                    "Число уникальных ссылок",
+                    "Общее число использований",
+                )
+            )
 
             items = sorted(self._hosts.items(), key=lambda x: x[1].all_count, reverse=True)
             for h, c in items:
                 assert c.all_count >= c.unique_count
-                fp.write(utils.csvline(h, c.unique_count, c.all_count))
+                fp.write(
+                    utils.csvline(h, c.unique_count, c.all_count)
+                )
 
-        with open(os.path.join(self.stat.destination, 'images_hosts2.csv'), 'w', encoding='utf-8') as fp:
-            fp.write(utils.csvline('Хост', 'Число уникальных ссылок', 'Общее число использований'))
+        with open(os.path.join(self.stat.destination, "images_hosts2.csv"), "w", encoding="utf-8") as fp:
+            fp.write(
+                utils.csvline(
+                    "Хост",
+                    "Число уникальных ссылок",
+                    "Общее число использований",
+                )
+            )
 
             items = sorted(self._hosts2.items(), key=lambda x: x[1].all_count, reverse=True)
             for h, c in items:
                 assert c.all_count >= c.unique_count
-                fp.write(utils.csvline(h, c.unique_count, c.all_count))
+                fp.write(
+                    utils.csvline(h, c.unique_count, c.all_count)
+                )
 
         super().stop()
