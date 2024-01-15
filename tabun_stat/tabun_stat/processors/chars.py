@@ -8,6 +8,17 @@ from tabun_stat.processors.base import BaseProcessor
 
 
 class CharsProcessor(BaseProcessor):
+    special_names: Dict[str, str] = {
+        '"': 'Кавычка',
+        ',': 'Запятая',
+        ' ': 'Пробел',
+        '\xa0': 'Неразр. пробел',
+        '\t': 'Табуляция',
+        '\n': 'Перенос строки',
+        '\r': 'Возврат каретки',
+    }
+    special_eng = 'AOECKPXMaoeckpxmBTHy'
+
     def __init__(self) -> None:
         super().__init__()
         self._chars = {}  # type: Dict[str, List[int]]
@@ -41,21 +52,9 @@ class CharsProcessor(BaseProcessor):
                 #     self.stat.timezone
                 # )
 
-                if c == '"':
-                    c = 'Кавычка'
-                elif c == ',':
-                    c = 'Запятая'
-                elif c == ' ':
-                    c = 'Пробел'
-                elif c == '\u00a0':
-                    c = 'Неразр. пробел'
-                elif c == '\t':
-                    c = 'Табуляция'
-                elif c == '\n':
-                    c = 'Перенос строки'
-                elif c == '\r':
-                    c = 'Возврат каретки'
-                elif c.lower() in ('a', 'o', 'e', 'c', 'k', 'p', 'x', 'm') or c in ('B', 'T', 'H', 'y'):
+                if c in self.special_names:
+                    c = self.special_names[c]
+                elif c in self.special_eng:
                     c = c + ' (англ.)'
                 elif not c.strip():
                     c = repr(c)

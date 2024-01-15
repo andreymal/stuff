@@ -1,9 +1,11 @@
 import time
 import importlib
 from datetime import datetime, timedelta
-from typing import Any, List, Optional, Iterable, Generator, Union
+from typing import Any, List, Optional, Iterable, Generator, TypeVar, Union
 
 import pytz
+
+T = TypeVar("T")
 
 
 def import_string(s: str) -> Any:
@@ -299,3 +301,11 @@ def append_days(tm: datetime, days: int) -> datetime:
     # d = pytz.timezone('Europe/Moscow').localize(datetime(2014, 10, 26, 0, 0, 0))
     # d  # => 2014-10-26 00:00:00+04:00
     # append_days(d, 1)  # => 2014-10-27 00:00:00+03:00
+
+
+def drop_duplicates(items: Iterable[T]) -> List[T]:
+    result: List[T] = []
+    for item in items:
+        if item not in result:
+            result.append(item)
+    return result

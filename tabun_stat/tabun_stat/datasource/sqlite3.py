@@ -177,8 +177,16 @@ class Sqlite3DataSource(BaseDataSource):
 
     def get_blog_id_of_post(self, post_id: int) -> Optional[int]:
         if post_id not in self._post_blogs:
-            self._post_blogs[post_id] = self.get_post_by_id(post_id).blog_id
-        return self._post_blogs[post_id]
+            try:
+                self._post_blogs[post_id] = self.get_post_by_id(post_id).blog_id
+            except DataNotFound:
+                self._post_blogs[post_id] = -1  # кэшируем ошибку таким образом
+                raise
+
+        blog_id = self._post_blogs[post_id]
+        if blog_id == -1:
+            raise DataNotFound
+        return blog_id
 
     def iter_blogs(self, filters: Optional[Dict[str, Any]] = None) -> Iterator[List[types.Blog]]:
         stat = self.get_blogs_limits(filters=filters)

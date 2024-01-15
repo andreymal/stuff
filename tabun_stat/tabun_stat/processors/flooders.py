@@ -1,5 +1,6 @@
 import os
-from typing import Dict, List
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
 from tabun_stat import types, utils
 from tabun_stat.datasource.base import DataNotFound
@@ -7,8 +8,13 @@ from tabun_stat.processors.base import BaseProcessor
 
 
 class FloodersProcessor(BaseProcessor):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        date_ranges: Optional[List[Tuple[datetime, datetime]]] = None,
+    ) -> None:
         super().__init__()
+
+        # Здесь статистика по годам
 
         # С закрытыми блогами
         self._flooders_all_posts = {}  # type: Dict[int, Dict[int, int]]
@@ -18,13 +24,40 @@ class FloodersProcessor(BaseProcessor):
         self._flooders_public_posts = {}  # type: Dict[int, Dict[int, int]]
         self._flooders_public_comments = {}  # type: Dict[int, Dict[int, int]]
 
-    def _put(self, obj: Dict[int, Dict[int, int]], year: int, author_id: int, count: int = 1) -> None:
-        if year not in obj:
-            obj[year] = {}
+        # Здесь статистика по указанным в конфиге диапазонам дат
+        self._date_ranges: List[Tuple[datetime, datetime]] = date_ranges or []
+
+        # Число в ключах словаря — индекс диапазона в списке date_ranges
+        self._flooders_all_posts_ranges: Dict[int, Dict[int, int]] = {}
+        self._flooders_all_comments_ranges: Dict[int, Dict[int, int]] = {}
+
+        self._flooders_public_posts_ranges: Dict[int, Dict[int, int]] = {}
+        self._flooders_public_comments_ranges: Dict[int, Dict[int, int]] = {}
+
+    def _put(
+        self,
+        obj_year: Dict[int, Dict[int, int]],
+        obj_ranges: Dict[int, Dict[int, int]],
+        date_local: datetime,
+        author_id: int,
+        count: int = 1,
+    ) -> None:
+        year = date_local.year
+        if year not in obj_year:
+            obj_year[year] = {}
         try:
-            obj[year][author_id] += count
+            obj_year[year][author_id] += count
         except KeyError:
-            obj[year][author_id] = count
+            obj_year[year][author_id] = count
+
+        for i, (dt_from, dt_to) in enumerate(self._date_ranges):
+            if date_local >= dt_from and date_local < dt_to:
+                if i not in obj_ranges:
+                    obj_ranges[i] = {}
+                try:
+                    obj_ranges[i][author_id] += count
+                except KeyError:
+                    obj_ranges[i][author_id] = count
 
     def _union_years(self, obj: Dict[int, Dict[int, int]]) -> Dict[int, int]:
         result = {}  # type: Dict[int, int]
@@ -41,18 +74,16 @@ class FloodersProcessor(BaseProcessor):
     def process_post(self, post: types.Post) -> None:
         assert self.stat
         assert post.created_at_local is not None
-        year = post.created_at_local.year
 
-        self._put(self._flooders_all_posts, year, post.author_id)
+        self._put(self._flooders_all_posts, self._flooders_all_posts_ranges, post.created_at_local, post.author_id)
 
         blog_status = post.blog_status
         if blog_status in (0, 2):
-            self._put(self._flooders_public_posts, year, post.author_id)
+            self._put(self._flooders_public_posts, self._flooders_public_posts_ranges, post.created_at_local, post.author_id)
 
     def process_comment(self, comment: types.Comment) -> None:
         assert self.stat
         assert comment.created_at_local is not None
-        year = comment.created_at_local.year
 
         try:
             if comment.post_id is None:
@@ -62,11 +93,11 @@ class FloodersProcessor(BaseProcessor):
             self.stat.log(0, f'WARNING: flooders: comment {comment.id} for unknown post {comment.post_id}')
             return
 
-        self._put(self._flooders_all_comments, year, comment.author_id)
+        self._put(self._flooders_all_comments, self._flooders_all_comments_ranges, comment.created_at_local, comment.author_id)
 
         blog_status = self.stat.source.get_blog_status_by_id(blog_id)
         if blog_status in (0, 2):
-            self._put(self._flooders_public_comments, year, comment.author_id)
+            self._put(self._flooders_public_comments, self._flooders_public_comments_ranges, comment.created_at_local, comment.author_id)
 
     def stop(self) -> None:
         assert self.stat
@@ -103,6 +134,24 @@ class FloodersProcessor(BaseProcessor):
 
         self.save_stat( 'flooders_all.csv', flooders_all_posts, flooders_all_comments)
         self.save_stat( 'flooders_public_all.csv', flooders_public_posts, flooders_public_comments)
+
+        # А также по тем диапазонам, которые указаны в конфиге
+        for i, (dt_from, dt_to) in enumerate(self._date_ranges):
+            from_str = dt_from.strftime('%Y-%m-%d_%H-%M-%S')
+            to_str = dt_to.strftime('%Y-%m-%d_%H-%M-%S')
+
+            # Непубличную отдельно
+            self.save_stat(
+                f'flooders_{from_str}__{to_str}.csv',
+                self._flooders_all_posts_ranges.get(i) or {},
+                self._flooders_all_comments_ranges.get(i) or {},
+            )
+            # Публичную отдельно
+            self.save_stat(
+                f'flooders_public_{from_str}__{to_str}.csv',
+                self._flooders_public_posts_ranges.get(i) or {},
+                self._flooders_public_comments_ranges.get(i) or {},
+            )
 
         super().stop()
 

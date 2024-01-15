@@ -3,7 +3,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from itertools import chain
-from typing import Optional, Callable, Dict, Any, List, Union
+from typing import Optional, Callable, Dict, Any, Iterator, List, Tuple, Union
 
 import pytz
 
@@ -242,7 +242,8 @@ class TabunStat:
     def _process_users(self, datefilters: Dict[str, Any]) -> None:
         self.log(1, 'Processing users:', end='    ')
 
-        tm = time.time()
+        all_tm = time.time()
+        tm = all_tm
         stat = self.source.get_users_limits()
         self._source_perf += (time.time() - tm)
 
@@ -286,12 +287,13 @@ class TabunStat:
         except StopIteration:
             pass
 
-        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - tm)))
+        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - all_tm)))
 
     def _process_blogs(self, datefilters: Dict[str, Any]) -> None:
         self.log(1, 'Processing blogs:', end='    ')
 
-        tm = time.time()
+        all_tm = time.time()
+        tm = all_tm
         stat = self.source.get_blogs_limits()
         self._source_perf += (time.time() - tm)
 
@@ -335,7 +337,7 @@ class TabunStat:
         except StopIteration:
             pass
 
-        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - tm)))
+        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - all_tm)))
 
     def _process_posts_and_comments(self, datefilters: Dict[str, Any]) -> None:
         self.log(1, 'Processing messages:', end=' ')
@@ -343,7 +345,8 @@ class TabunStat:
         l = '(fetch stat...)'
         self.log(1, l, end='', for_tty=True)
 
-        tm = time.time()
+        all_tm = time.time()
+        tm = all_tm
         stat_posts = self.source.get_posts_limits(filters=datefilters)
         stat_comments = self.source.get_comments_limits(filters=datefilters)
         self._source_perf += (time.time() - tm)
@@ -384,22 +387,9 @@ class TabunStat:
             self._perfmon_put(idx, time.time() - tm)
 
         # И дальше забираем посты и комменты по дням, сортируя их строго по времени
-        day = min_date
         i = 0
-        while True:
-            next_day = day + timedelta(days=1)
-            assert not next_day.tzinfo
-
-            filters = {'created_at__gte': day}
-            if next_day >= max_date:
-                filters['created_at__lte'] = max_date
-            else:
-                filters['created_at__lt'] = next_day
-
-            tm = time.time()
-            posts = list(chain.from_iterable(self.source.iter_posts(filters=filters)))
-            comments = list(chain.from_iterable(self.source.iter_comments(filters=filters)))
-            self._source_perf += (time.time() - tm)
+        for source_perf, posts, comments in iter_messages(min_date, max_date, self.source):
+            self._source_perf += source_perf
 
             messages: List[Union[types.Post, types.Comment]] = []
             messages.extend(posts)
@@ -407,8 +397,6 @@ class TabunStat:
 
             if messages:
                 messages.sort(key=lambda x: x.created_at)
-                assert messages[0].created_at >= day
-                assert messages[-1].created_at < next_day
 
             for message in messages:
                 message.created_at_local = utils.apply_tzinfo(message.created_at, self.timezone)
@@ -425,10 +413,6 @@ class TabunStat:
             i += len(messages)
             self.log(2, drawer.send(i) or '', end='', for_tty=True)
 
-            if next_day >= max_date:
-                break
-            day = next_day
-
         for idx, p in enumerate(self._processors):
             tm = time.time()
             p.end_messages(stat_posts, stat_comments)
@@ -439,5 +423,32 @@ class TabunStat:
         except StopIteration:
             pass
 
-        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - tm)))
-        return
+        self.log(1, '| Done in {}.'.format(utils.format_timedelta(time.time() - all_tm)))
+
+
+def iter_messages(
+    min_date: datetime,
+    max_date: datetime,
+    source: BaseDataSource,
+) -> Iterator[Tuple[float, List[types.Post], List[types.Comment]]]:
+    day = min_date
+    while True:
+        next_day = day + timedelta(days=1)
+        assert not next_day.tzinfo
+
+        filters = {'created_at__gte': day}
+        if next_day >= max_date:
+            filters['created_at__lte'] = max_date
+        else:
+            filters['created_at__lt'] = next_day
+
+        tm = time.time()
+        posts = list(chain.from_iterable(source.iter_posts(filters=filters)))
+        comments = list(chain.from_iterable(source.iter_comments(filters=filters)))
+        source_perf = time.time() - tm
+
+        yield source_perf, posts, comments
+
+        if next_day >= max_date:
+            break
+        day = next_day
