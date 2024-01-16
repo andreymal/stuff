@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 class CommentsCountsAvgProcessor(BaseProcessor):
@@ -24,8 +25,7 @@ class CommentsCountsAvgProcessor(BaseProcessor):
         # Число дней в месяце, учтённых в статистике
         self._days: dict[tuple[int, int], int] = {}
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         assert comment.created_at_local is not None
         day = comment.created_at_local.date()
         hour = comment.created_at_local.hour
@@ -55,9 +55,7 @@ class CommentsCountsAvgProcessor(BaseProcessor):
 
         self._counts[(day.year, day.month)][hour] += 1
 
-    def stop(self) -> None:
-        assert self.stat
-
+    def stop(self, stat: TabunStat) -> None:
         # Считаем статистику за всё время...
         counts_all = [0] * 24
         days_all = 0
@@ -67,7 +65,7 @@ class CommentsCountsAvgProcessor(BaseProcessor):
         days_year: dict[int, int] = {}
 
         # ...в одном цикле
-        for (year, monn), stat in self._counts.items():
+        for (year, monn), cstat in self._counts.items():
             days = self._days[(year, monn)]
 
             if year not in counts_year:
@@ -77,20 +75,20 @@ class CommentsCountsAvgProcessor(BaseProcessor):
             days_all += days
             days_year[year] += days
 
-            for hour, cnt in enumerate(stat):
+            for hour, cnt in enumerate(cstat):
                 counts_all[hour] += cnt
                 counts_year[year][hour] += cnt
 
         last_months = sorted(self._counts)[-self.save_last_months :]
 
         # Собираем CSV-заголовок
-        header = [f"Час ({str(self.stat.tz)})", "За всё время"]
+        header = [f"Час ({str(stat.tz)})", "За всё время"]
         for year in sorted(counts_year):
             header.append(f"{year} год")
         for mon in last_months:
             header.append(f"{mon[0]:04d}-{mon[1]:02d}")
 
-        with (self.stat.destination / "comments_counts_avg.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "comments_counts_avg.csv").open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline(*header))
 
             for hour in range(24):
@@ -109,4 +107,4 @@ class CommentsCountsAvgProcessor(BaseProcessor):
 
                 fp.write(utils.csvline(*line))
 
-        super().stop()
+        super().stop(stat)

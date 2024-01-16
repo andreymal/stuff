@@ -2,6 +2,7 @@ from datetime import datetime
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 class FloodersProcessor(BaseProcessor):
@@ -77,8 +78,7 @@ class FloodersProcessor(BaseProcessor):
 
         return result
 
-    def process_post(self, post: types.Post) -> None:
-        assert self.stat
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         assert post.created_at_local is not None
 
         self._put(
@@ -96,8 +96,7 @@ class FloodersProcessor(BaseProcessor):
                 post.author_id,
             )
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         assert comment.created_at_local is not None
 
         self._put(
@@ -115,9 +114,7 @@ class FloodersProcessor(BaseProcessor):
                 comment.author_id,
             )
 
-    def stop(self) -> None:
-        assert self.stat
-
+    def stop(self, stat: TabunStat) -> None:
         # Сохраняем статистику по годам
 
         years = set(self._flooders_all_posts) | set(self._flooders_all_comments)
@@ -130,12 +127,14 @@ class FloodersProcessor(BaseProcessor):
         for year in range(years_min, years_max + 1):
             # Непубличную отдельно
             self.save_stat(
+                stat,
                 f"flooders_{year}.csv",
                 self._flooders_all_posts.get(year) or {},
                 self._flooders_all_comments.get(year) or {},
             )
             # Публичную отдельно
             self.save_stat(
+                stat,
                 f"flooders_public_{year}.csv",
                 self._flooders_public_posts.get(year) or {},
                 self._flooders_public_comments.get(year) or {},
@@ -148,8 +147,8 @@ class FloodersProcessor(BaseProcessor):
         flooders_public_posts = self._union_years(self._flooders_public_posts)
         flooders_public_comments = self._union_years(self._flooders_public_comments)
 
-        self.save_stat("flooders_all.csv", flooders_all_posts, flooders_all_comments)
-        self.save_stat("flooders_public_all.csv", flooders_public_posts, flooders_public_comments)
+        self.save_stat(stat, "flooders_all.csv", flooders_all_posts, flooders_all_comments)
+        self.save_stat(stat, "flooders_public_all.csv", flooders_public_posts, flooders_public_comments)
 
         # А также по тем диапазонам, которые указаны в конфиге
         for i, (dt_from, dt_to) in enumerate(self._date_ranges):
@@ -158,45 +157,51 @@ class FloodersProcessor(BaseProcessor):
 
             # Непубличную отдельно
             self.save_stat(
+                stat,
                 f"flooders_{from_str}__{to_str}.csv",
                 self._flooders_all_posts_ranges.get(i) or {},
                 self._flooders_all_comments_ranges.get(i) or {},
             )
             # Публичную отдельно
             self.save_stat(
+                stat,
                 f"flooders_public_{from_str}__{to_str}.csv",
                 self._flooders_public_posts_ranges.get(i) or {},
                 self._flooders_public_comments_ranges.get(i) or {},
             )
 
-        super().stop()
+        super().stop(stat)
 
-    def save_stat(self, filename: str, stat_posts: dict[int, int], stat_comments: dict[int, int]) -> None:
-        assert self.stat
-
-        stat: dict[int, list[int]] = {}
+    def save_stat(
+        self,
+        stat: TabunStat,
+        filename: str,
+        stat_posts: dict[int, int],
+        stat_comments: dict[int, int],
+    ) -> None:
+        fstat: dict[int, list[int]] = {}
 
         for user_id, count in stat_posts.items():
-            if user_id not in stat:
-                stat[user_id] = [0, 0]
-            stat[user_id][0] = count
+            if user_id not in fstat:
+                fstat[user_id] = [0, 0]
+            fstat[user_id][0] = count
 
         for user_id, count in stat_comments.items():
-            if user_id not in stat:
-                stat[user_id] = [0, 0]
-            stat[user_id][1] = count
+            if user_id not in fstat:
+                fstat[user_id] = [0, 0]
+            fstat[user_id][1] = count
 
         # Сортируем юзеров по общему числу постов и комментов в сумме
-        items = sorted(stat.items(), key=lambda x: x[1][0] + x[1][1], reverse=True)
+        items = sorted(fstat.items(), key=lambda x: x[1][0] + x[1][1], reverse=True)
 
-        with (self.stat.destination / filename).open("w", encoding="utf-8") as fp:
+        with (stat.destination / filename).open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline("ID юзера", "Пользователь", "Сколько постов", "Сколько комментов"))
 
             for user_id, (posts_count, comments_count) in items:
                 fp.write(
                     utils.csvline(
                         user_id,
-                        self.stat.source.get_username_by_user_id(user_id),
+                        stat.source.get_username_by_user_id(user_id),
                         posts_count,
                         comments_count,
                     )

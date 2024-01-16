@@ -3,6 +3,7 @@ from typing import Iterable
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 class UsersRatingsProcessor(BaseProcessor):
@@ -14,7 +15,7 @@ class UsersRatingsProcessor(BaseProcessor):
         for step in steps:
             self._ratings[step] = {}
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: TabunStat, user: types.User) -> None:
         for step, ratings in self._ratings.items():
             step_vote = int(math.floor(user.rating / step) * step)
             if step_vote not in ratings:
@@ -24,11 +25,9 @@ class UsersRatingsProcessor(BaseProcessor):
         if user.rating == 0.0:
             self._zero += 1
 
-    def end_users(self, stat: types.UsersLimits) -> None:
-        assert self.stat
-
+    def end_users(self, stat: TabunStat, limits: types.UsersLimits) -> None:
         for step, ratings in self._ratings.items():
-            with (self.stat.destination / f"users_ratings_{step}.csv").open("w", encoding="utf-8") as fp:
+            with (stat.destination / f"users_ratings_{step}.csv").open("w", encoding="utf-8") as fp:
                 fp.write(utils.csvline("Рейтинг", "Число пользователей"))
 
                 step_vote = min(ratings)
@@ -42,5 +41,5 @@ class UsersRatingsProcessor(BaseProcessor):
 
                     step_vote += step
 
-        with (self.stat.destination / "users_ratings_zero.txt").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "users_ratings_zero.txt").open("w", encoding="utf-8") as fp:
             fp.write(f"{self._zero}\n")

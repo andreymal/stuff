@@ -5,6 +5,7 @@ from typing import IO, Iterable
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 @dataclass(slots=True)
@@ -96,7 +97,7 @@ class WordsProcessor(BaseProcessor):
 
         self._warned_posts: set[int] = set()
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         assert post.created_at_local is not None
         public = post.blog_status in (0, 2)
         self._process(
@@ -128,13 +129,11 @@ class WordsProcessor(BaseProcessor):
                 public=public,
             )
 
-    def process_comment(self, comment: types.Comment) -> None:
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         assert comment.created_at_local is not None
-        assert self.stat
-
         if comment.post_id is None or comment.blog_status is None:
             if comment.post_id is None or comment.post_id not in self._warned_posts:
-                self.stat.log(
+                stat.log(
                     0,
                     f"WARNING: words: comment {comment.id} for unknown post {comment.post_id},",
                     "marking as private",
@@ -181,8 +180,6 @@ class WordsProcessor(BaseProcessor):
         is_tag: bool,
         public: bool,
     ) -> None:
-        assert self.stat
-
         if not is_title and not is_tag:
             # Фиксим косяк старых версий tbackup
             if not raw_body.startswith("<div ") and raw_body.endswith("</div>"):
@@ -283,16 +280,14 @@ class WordsProcessor(BaseProcessor):
                     ws.public_nobots_count += 1
                 ws.put_public_user(author_id)
 
-    def stop(self) -> None:
-        assert self.stat
-
+    def stop(self, stat: TabunStat) -> None:
         fps: list[tuple[IO[str], datetime | None]] = []
 
         try:
-            fps.append(((self.stat.destination / "words.csv").open("w", encoding="utf-8"), None))
+            fps.append(((stat.destination / "words.csv").open("w", encoding="utf-8"), None))
             if self.since is not None:
                 filename = f"words_since_{self.since.strftime('%Y-%m-%d_%H-%M-%S')}.csv"
-                fps.append(((self.stat.destination / filename).open("w", encoding="utf-8"), self.since))
+                fps.append(((stat.destination / filename).open("w", encoding="utf-8"), self.since))
 
             for fp, since in fps:
                 fp.write(
@@ -321,7 +316,7 @@ class WordsProcessor(BaseProcessor):
 
                     if data.users_count <= self.user_lists_max_len:
                         users = [
-                            self.stat.source.get_username_by_user_id(uid)
+                            stat.source.get_username_by_user_id(uid)
                             for user_list in data.users.values()
                             for uid in user_list
                         ]
@@ -330,7 +325,7 @@ class WordsProcessor(BaseProcessor):
 
                     if data.public_users_count <= self.user_lists_max_len:
                         public_users = [
-                            self.stat.source.get_username_by_user_id(uid)
+                            stat.source.get_username_by_user_id(uid)
                             for user_list in data.public_users.values()
                             for uid in user_list
                         ]
@@ -360,7 +355,7 @@ class WordsProcessor(BaseProcessor):
                 fp.close()
             fps.clear()
 
-        with (self.stat.destination / "avgstats.txt").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "avgstats.txt").open("w", encoding="utf-8") as fp:
             fp.write(
                 "Средняя длина поста: {} слов, {} символов, {} байт\n".format(
                     int(self._post_len_words[0] / self._post_len_words[1])
@@ -389,4 +384,4 @@ class WordsProcessor(BaseProcessor):
             )
             fp.write(f"Комментов без текста: {self._comments_without_text}\n")
 
-        super().stop()
+        super().stop(stat)

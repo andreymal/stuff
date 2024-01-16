@@ -3,6 +3,7 @@ from typing import Sequence
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 @dataclass(slots=True)
@@ -48,10 +49,10 @@ class NecropostersProcessor(BaseProcessor):
         self._post_authors: dict[int, int] = {}  # {post_id: author_id}
         self._user_ratings: dict[int, float] = {}  # {user_id: rating}
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: TabunStat, user: types.User) -> None:
         self._user_ratings[user.id] = user.rating
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         if post.blog_status not in (0, 2):
             # Считать некропостеров в закрытых блогах нет смысла, наверное?
             return
@@ -59,9 +60,7 @@ class NecropostersProcessor(BaseProcessor):
         self._post_authors[post.id] = post.author_id
         self._last_activity[post.id] = post.created_at.timestamp()
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
-
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         if comment.post_id is None or comment.blog_status not in (0, 2):
             return
 
@@ -83,7 +82,7 @@ class NecropostersProcessor(BaseProcessor):
             # 2) Автор поста добавил комментарии ещё в черновиках перед публикацией
             # В таком случае считаем дату коммента датой первой активности, чтобы считать хоть что-то
             # (правда, автор поста останется неизвестен)
-            self.stat.log(
+            stat.log(
                 0, f"WARNING: necroposters: comment {comment.id} for uninitalized post {comment.post_id}"
             )
             return
@@ -91,7 +90,7 @@ class NecropostersProcessor(BaseProcessor):
         try:
             user_rating = self._user_ratings[comment.author_id]
         except KeyError:
-            self.stat.log(
+            stat.log(
                 0, f"WARNING: necroposters: comment {comment.id} for unknown author id {comment.author_id}"
             )
             return
@@ -107,37 +106,33 @@ class NecropostersProcessor(BaseProcessor):
             # Некропостер, но в своём собственном посте, это можно
             return
 
-        for stat in self._stats:
-            if stat.min_rating is None or user_rating >= stat.min_rating:
-                stat.add(comment.author_id, score)
+        for nstat in self._stats:
+            if nstat.min_rating is None or user_rating >= nstat.min_rating:
+                nstat.add(comment.author_id, score)
 
-    def stop(self) -> None:
-        assert self.stat
-
-        for stat in self._stats:
-            suffix = f"_{stat.min_rating:.2f}" if stat.min_rating is not None else ""
-            with (self.stat.destination / f"necroposters{suffix}.csv").open("w", encoding="utf-8") as fp:
+    def stop(self, stat: TabunStat) -> None:
+        for nstat in self._stats:
+            suffix = f"_{nstat.min_rating:.2f}" if nstat.min_rating is not None else ""
+            with (stat.destination / f"necroposters{suffix}.csv").open("w", encoding="utf-8") as fp:
                 fp.write(utils.csvline("ID юзера", "Пользователь", "Число некропостов"))
-                for user_id, count in sorted(stat.count_by_user.items(), key=lambda x: x[1], reverse=True):
+                for user_id, count in sorted(nstat.count_by_user.items(), key=lambda x: x[1], reverse=True):
                     fp.write(
                         utils.csvline(
                             user_id,
-                            self.stat.source.get_username_by_user_id(user_id),
+                            stat.source.get_username_by_user_id(user_id),
                             count,
                         )
                     )
 
-            with (self.stat.destination / f"necroposters{suffix}_score.csv").open(
-                "w", encoding="utf-8"
-            ) as fp:
+            with (stat.destination / f"necroposters{suffix}_score.csv").open("w", encoding="utf-8") as fp:
                 fp.write(utils.csvline("ID юзера", "Пользователь", "Рейтинг некропостинга"))
-                for user_id, score in sorted(stat.score_by_user.items(), key=lambda x: x[1], reverse=True):
+                for user_id, score in sorted(nstat.score_by_user.items(), key=lambda x: x[1], reverse=True):
                     fp.write(
                         utils.csvline(
                             user_id,
-                            self.stat.source.get_username_by_user_id(user_id),
+                            stat.source.get_username_by_user_id(user_id),
                             score,
                         )
                     )
 
-        super().stop()
+        super().stop(stat)

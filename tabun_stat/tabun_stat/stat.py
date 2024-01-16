@@ -170,8 +170,7 @@ class TabunStat:
 
         * если max_date не указан, то ставит текущее время;
         * создаёт каталог destination;
-        * вызывает метод start у обработчиков, передавая им себя, min_date
-          и max_date;
+        * вызывает метод start у обработчиков;
         * по очереди отдаёт обработку юзеров, блогов, постов и комментов,
           причём для постов и комментов гарантируется хронологический порядок;
         * после всего этого вызывает stop у обработчиков.
@@ -188,17 +187,15 @@ class TabunStat:
         # не указана, то явно прописываем текущую дату для большей
         # консистентности статистики (чтобы новые посты и комменты, появившиеся
         # уже во время подсчёта статистики, не испортили тут всё)
-        min_date = self.min_date
-        max_date = self.max_date
-        if max_date is None and (min_date is None or started_at > min_date):
-            max_date = started_at
+        if self.max_date is None and (self.min_date is None or started_at > self.min_date):
+            self.max_date = started_at
 
         # Уведомляем пользователя об охватываемом периоде
         self.log(
             1,
             "Date interval for posts and comments (UTC): [{} .. {})".format(
-                min_date.strftime("%Y-%m-%d %H:%M:%S") if min_date is not None else "-inf",
-                max_date.strftime("%Y-%m-%d %H:%M:%S") if max_date is not None else "+inf",
+                self.min_date.strftime("%Y-%m-%d %H:%M:%S") if self.min_date is not None else "-inf",
+                self.max_date.strftime("%Y-%m-%d %H:%M:%S") if self.max_date is not None else "+inf",
             ),
         )
 
@@ -219,13 +216,13 @@ class TabunStat:
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.start(self, min_date, max_date)
+            p.start(self)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         try:
-            self._process_users(max_date)
+            self._process_users()
             self._process_blogs()
-            self._process_posts_and_comments(min_date, max_date)
+            self._process_posts_and_comments()
 
             finished_at = datetime.now(timezone.utc)
 
@@ -242,7 +239,7 @@ class TabunStat:
                 if drawer is not None:
                     drawer.add_progress(1)
                 tm = time.monotonic()
-                p.stop()
+                p.stop(self)
                 self._perfmon_put(idx, time.monotonic() - tm)
 
             if drawer is not None:
@@ -265,30 +262,30 @@ class TabunStat:
                 for x in self._generate_perf_info(duration):
                     self.log(1, x)
 
-    def _process_users(self, max_date: datetime | None) -> None:
+    def _process_users(self) -> None:
         self.log(1, "Processing users:", end="    ")
 
         datefilters = {}
         # min_date не учитываем специально
-        if max_date is not None:
-            datefilters["registered_at__lt"] = max_date
+        if self.max_date is not None:
+            datefilters["registered_at__lt"] = self.max_date
 
         all_tm = time.monotonic()
         tm = all_tm
-        stat = self.source.get_users_limits(datefilters)
+        limits = self.source.get_users_limits(datefilters)
         self._source_perf += time.monotonic() - tm
 
-        if not stat.count:
+        if not limits.count:
             self.log(1, "nothing to do.")
             return
 
-        drawer = utils.ProgressDrawer(target=stat.count) if self.verbosity >= 2 else None
+        drawer = utils.ProgressDrawer(target=limits.count) if self.verbosity >= 2 else None
         if drawer is not None:
             drawer.update(0)
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.begin_users(stat)
+            p.begin_users(self, limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         tm = time.monotonic()
@@ -305,14 +302,14 @@ class TabunStat:
             for idx, p in enumerate(self._processors):
                 tm = time.monotonic()
                 for user in users:
-                    p.process_user(user)
+                    p.process_user(self, user)
                 self._perfmon_put(idx, time.monotonic() - tm)
 
             tm = time.monotonic()
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.end_users(stat)
+            p.end_users(self, limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         if drawer is not None:
@@ -325,21 +322,21 @@ class TabunStat:
 
         all_tm = time.monotonic()
         tm = all_tm
-        stat = self.source.get_blogs_limits()
+        limits = self.source.get_blogs_limits()
         self._source_perf += time.monotonic() - tm
 
-        if not stat.count:
+        if not limits.count:
             self.log(1, "nothing to do.")
             return
-        assert stat.first_id is not None and stat.last_id is not None
+        assert limits.first_id is not None and limits.last_id is not None
 
-        drawer = utils.ProgressDrawer(target=stat.count) if self.verbosity >= 2 else None
+        drawer = utils.ProgressDrawer(target=limits.count) if self.verbosity >= 2 else None
         if drawer is not None:
             drawer.update(0)
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.begin_blogs(stat)
+            p.begin_blogs(self, limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         tm = time.monotonic()
@@ -356,14 +353,14 @@ class TabunStat:
             for idx, p in enumerate(self._processors):
                 tm = time.monotonic()
                 for blog in blogs:
-                    p.process_blog(blog)
+                    p.process_blog(self, blog)
                 self._perfmon_put(idx, time.monotonic() - tm)
 
             tm = time.monotonic()
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.end_blogs(stat)
+            p.end_blogs(self, limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         if drawer is not None:
@@ -371,22 +368,22 @@ class TabunStat:
 
         self.log(1, f"| Done in {utils.format_timedelta(time.monotonic() - all_tm)}.")
 
-    def _process_posts_and_comments(self, min_date: datetime | None, max_date: datetime | None) -> None:
+    def _process_posts_and_comments(self) -> None:
         self.log(1, "Processing messages:", end=" ")
 
         datefilters = {}
-        if min_date is not None:
-            datefilters["created_at__gte"] = min_date
-        if max_date is not None:
-            datefilters["created_at__lt"] = max_date
+        if self.min_date is not None:
+            datefilters["created_at__gte"] = self.min_date
+        if self.max_date is not None:
+            datefilters["created_at__lt"] = self.max_date
 
         l = "(fetch stat...)"
         self.log(1, l, end="", for_tty=True)
 
         all_tm = time.monotonic()
         tm = all_tm
-        stat_posts = self.source.get_posts_limits(filters=datefilters)
-        stat_comments = self.source.get_comments_limits(filters=datefilters)
+        posts_limits = self.source.get_posts_limits(filters=datefilters)
+        comments_limits = self.source.get_comments_limits(filters=datefilters)
         self._source_perf += time.monotonic() - tm
 
         self.log(1, "\b" * len(l), end="", for_tty=True)
@@ -394,25 +391,27 @@ class TabunStat:
 
         # Если нет ни постов, ни комментов, то делать нечего
         no_posts = (
-            stat_posts.first_created_at is None or stat_posts.last_created_at is None or not stat_posts.count
+            posts_limits.first_created_at is None
+            or posts_limits.last_created_at is None
+            or not posts_limits.count
         )
         no_comments = (
-            stat_comments.first_created_at is None
-            or stat_comments.last_created_at is None
-            or not stat_comments.count
+            comments_limits.first_created_at is None
+            or comments_limits.last_created_at is None
+            or not comments_limits.count
         )
         if no_posts and no_comments:
             self.log(1, "nothing to do.")
             return
 
         for k in ("first_created_at", "last_created_at"):
-            if getattr(stat_posts, k).tzinfo is None:
+            if getattr(posts_limits, k).tzinfo is None:
                 raise ValueError(f"PostsLimits.{k} must be aware datetime")
-            if getattr(stat_comments, k).tzinfo is None:
+            if getattr(comments_limits, k).tzinfo is None:
                 raise ValueError(f"CommentsLimits.{k} must be aware datetime")
 
         drawer = (
-            utils.ProgressDrawer(target=stat_posts.count + stat_comments.count)
+            utils.ProgressDrawer(target=posts_limits.count + comments_limits.count)
             if self.verbosity >= 2
             else None
         )
@@ -420,27 +419,30 @@ class TabunStat:
             drawer.update(0)
 
         # Высчитываем охватываемый интервал времени
-        if stat_posts.first_created_at and stat_comments.first_created_at:
-            min_date = min(stat_posts.first_created_at, stat_comments.first_created_at)
-        else:
-            min_date = stat_posts.first_created_at or stat_comments.first_created_at
+        msg_min_date: datetime | None
+        msg_max_date: datetime | None
 
-        if stat_posts.last_created_at and stat_comments.last_created_at:
-            max_date = max(stat_posts.last_created_at, stat_comments.last_created_at)
+        if posts_limits.first_created_at and comments_limits.first_created_at:
+            msg_min_date = min(posts_limits.first_created_at, comments_limits.first_created_at)
         else:
-            max_date = stat_posts.last_created_at or stat_comments.last_created_at
+            msg_min_date = posts_limits.first_created_at or comments_limits.first_created_at
 
-        assert min_date is not None
-        assert max_date is not None
+        if posts_limits.last_created_at and comments_limits.last_created_at:
+            msg_max_date = max(posts_limits.last_created_at, comments_limits.last_created_at)
+        else:
+            msg_max_date = posts_limits.last_created_at or comments_limits.last_created_at
+
+        assert msg_min_date is not None
+        assert msg_max_date is not None
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.begin_messages(stat_posts, stat_comments)
+            p.begin_messages(self, posts_limits, comments_limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         # И дальше забираем посты и комменты по дням, сортируя их строго по времени
         for source_perf, source_perf_threaded, posts, comments in iter_messages_threaded(
-            min_date, max_date, self.source
+            msg_min_date, msg_max_date, self.source
         ):
             self._source_perf += source_perf
             self._source_perf_threaded += source_perf_threaded
@@ -466,9 +468,9 @@ class TabunStat:
                 tm = time.monotonic()
                 for message in messages:
                     if isinstance(message, types.Comment):
-                        p.process_comment(message)
+                        p.process_comment(self, message)
                     else:
-                        p.process_post(message)
+                        p.process_post(self, message)
                 self._perfmon_put(idx, time.monotonic() - tm)
 
             if drawer is not None:
@@ -476,7 +478,7 @@ class TabunStat:
 
         for idx, p in enumerate(self._processors):
             tm = time.monotonic()
-            p.end_messages(stat_posts, stat_comments)
+            p.end_messages(self, posts_limits, comments_limits)
             self._perfmon_put(idx, time.monotonic() - tm)
 
         if drawer is not None:

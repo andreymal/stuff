@@ -64,18 +64,11 @@ class PostsCountsProcessor(BaseProcessor):
         self._fp_sum: IO[str] | None = None
         self._fp_perc: IO[str] | None = None
 
-    def start(
-        self,
-        stat: TabunStat,
-        min_date: datetime | None = None,
-        max_date: datetime | None = None,
-    ) -> None:
-        super().start(stat, min_date, max_date)
-        assert self.stat
-
-        self._fp = (self.stat.destination / "posts_counts.csv").open("w", encoding="utf-8")
-        self._fp_sum = (self.stat.destination / "posts_counts_sum.csv").open("w", encoding="utf-8")
-        self._fp_perc = (self.stat.destination / "posts_counts_perc.csv").open("w", encoding="utf-8")
+    def start(self, stat: TabunStat) -> None:
+        super().start(stat)
+        self._fp = (stat.destination / "posts_counts.csv").open("w", encoding="utf-8")
+        self._fp_sum = (stat.destination / "posts_counts_sum.csv").open("w", encoding="utf-8")
+        self._fp_perc = (stat.destination / "posts_counts_perc.csv").open("w", encoding="utf-8")
 
         # Применяем часовой пояс к периоду
         self.period_begin = self.period_end = self.period_begin.astimezone(stat.tz)
@@ -89,13 +82,11 @@ class PostsCountsProcessor(BaseProcessor):
         self._fp_sum.write(header_csv)
         self._fp_perc.write(utils.csvline(*header))
 
-    def process_blog(self, blog: types.Blog) -> None:
+    def process_blog(self, stat: TabunStat, blog: types.Blog) -> None:
         if blog.slug in self._blogs_categories_slug:
             self._blogs_categories[blog.id] = self._blogs_categories_slug[blog.slug]
 
-    def process_post(self, post: types.Post) -> None:
-        assert self.stat
-
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         # Если период закончился, то сохраняем статистику
         while post.created_at >= self.period_end:
             self._flush_stat()
@@ -121,8 +112,6 @@ class PostsCountsProcessor(BaseProcessor):
         self._stat[category_idx] += 1
 
     def _flush_stat(self) -> None:
-        assert self.stat
-
         # Собираем три разные строки для трёх файлов
         line: list[object] = [self.period_begin.strftime("%Y-%m-%d")]
         line_sum = line[:]
@@ -165,7 +154,7 @@ class PostsCountsProcessor(BaseProcessor):
         # Теоретически есть шанс попасть в несуществующее или неоднозначное время... но пофиг наверное
         self.period_end = self.period_begin + timedelta(days=self.period)
 
-    def stop(self) -> None:
+    def stop(self, stat: TabunStat) -> None:
         if sum(self._stat) > 0:
             self._flush_stat()
 
@@ -178,4 +167,4 @@ class PostsCountsProcessor(BaseProcessor):
         if self._fp_perc is not None:
             self._fp_perc.close()
             self._fp_perc = None
-        super().stop()
+        super().stop(stat)

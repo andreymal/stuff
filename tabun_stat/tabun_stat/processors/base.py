@@ -1,5 +1,6 @@
+# pylint: disable=unused-argument
+
 import typing
-from datetime import datetime
 
 from tabun_stat import types
 
@@ -9,58 +10,52 @@ if typing.TYPE_CHECKING:
 
 class BaseProcessor:
     def __init__(self) -> None:
-        self.stat: "TabunStat" | None = None
-        self.min_date: datetime | None = None
-        self.max_date: datetime | None = None
         self._used = False
 
-    def start(
-        self,
-        stat: "TabunStat",
-        min_date: datetime | None = None,
-        max_date: datetime | None = None,
-    ) -> None:
+    def start(self, stat: "TabunStat") -> None:
         if self._used:
             raise RuntimeError("Cannot use processor many times")
         self._used = True
 
-        assert stat
-        self.stat = stat
-        self.min_date = min_date
-        self.max_date = max_date
-
-    def stop(self) -> None:
-        self.stat = None
-        self.min_date = None
-        self.max_date = None
+    def stop(self, stat: "TabunStat") -> None:
         assert self._used
 
-    def begin_users(self, stat: types.UsersLimits) -> None:
+    def begin_users(self, stat: "TabunStat", limits: types.UsersLimits) -> None:
         pass
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: "TabunStat", user: types.User) -> None:
         pass
 
-    def end_users(self, stat: types.UsersLimits) -> None:
+    def end_users(self, stat: "TabunStat", limits: types.UsersLimits) -> None:
         pass
 
-    def begin_blogs(self, stat: types.BlogsLimits) -> None:
+    def begin_blogs(self, stat: "TabunStat", limits: types.BlogsLimits) -> None:
         pass
 
-    def process_blog(self, blog: types.Blog) -> None:
+    def process_blog(self, stat: "TabunStat", blog: types.Blog) -> None:
         pass
 
-    def end_blogs(self, stat: types.BlogsLimits) -> None:
+    def end_blogs(self, stat: "TabunStat", limits: types.BlogsLimits) -> None:
         pass
 
-    def begin_messages(self, stat_posts: types.PostsLimits, stat_comments: types.CommentsLimits) -> None:
+    def begin_messages(
+        self,
+        stat: "TabunStat",
+        posts_limits: types.PostsLimits,
+        comments_limits: types.CommentsLimits,
+    ) -> None:
         pass
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: "TabunStat", post: types.Post) -> None:
         pass
 
-    def process_comment(self, comment: types.Comment) -> None:
+    def process_comment(self, stat: "TabunStat", comment: types.Comment) -> None:
         pass
 
-    def end_messages(self, stat_posts: types.PostsLimits, stat_comments: types.CommentsLimits) -> None:
+    def end_messages(
+        self,
+        stat: "TabunStat",
+        posts_limits: types.PostsLimits,
+        comments_limits: types.CommentsLimits,
+    ) -> None:
         pass

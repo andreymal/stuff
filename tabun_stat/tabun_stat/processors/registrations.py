@@ -3,6 +3,7 @@ from typing import Sequence
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 class RegistrationsProcessor(BaseProcessor):
@@ -31,7 +32,7 @@ class RegistrationsProcessor(BaseProcessor):
         # [(рейтинг, {день: число регистраций в этот день})]
         self._stat_by_rating: list[tuple[float, dict[date, int]]] = [(r, {}) for r in rating_thresholds]
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: TabunStat, user: types.User) -> None:
         assert user.registered_at_local is not None
         day = user.registered_at_local.date()
 
@@ -45,16 +46,14 @@ class RegistrationsProcessor(BaseProcessor):
                     rstat[day] = 0
                 rstat[day] += 1
 
-    def end_users(self, stat: types.UsersLimits) -> None:
-        assert self.stat
-
+    def end_users(self, stat: TabunStat, limits: types.UsersLimits) -> None:
         if not self._stat:
             return
 
         day = min(self._stat)
         max_day = max(self._stat)
 
-        with (self.stat.destination / "registrations.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "registrations.csv").open("w", encoding="utf-8") as fp:
             headers = ["Дата", "Новые пользователи", "Всего пользователей"]
             for r, _ in self._stat_by_rating:
                 headers.append(f"Всего с рейтингом ≥ {r:0.2f}")

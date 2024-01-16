@@ -71,18 +71,11 @@ class CommentsCountsProcessor(BaseProcessor):
         self._fp_sum: IO[str] | None = None
         self._fp_perc: IO[str] | None = None
 
-    def start(
-        self,
-        stat: TabunStat,
-        min_date: datetime | None = None,
-        max_date: datetime | None = None,
-    ) -> None:
-        super().start(stat, min_date, max_date)
-        assert self.stat
-
-        self._fp = (self.stat.destination / "comments_counts.csv").open("w", encoding="utf-8")
-        self._fp_sum = (self.stat.destination / "comments_counts_sum.csv").open("w", encoding="utf-8")
-        self._fp_perc = (self.stat.destination / "comments_counts_perc.csv").open("w", encoding="utf-8")
+    def start(self, stat: TabunStat) -> None:
+        super().start(stat)
+        self._fp = (stat.destination / "comments_counts.csv").open("w", encoding="utf-8")
+        self._fp_sum = (stat.destination / "comments_counts_sum.csv").open("w", encoding="utf-8")
+        self._fp_perc = (stat.destination / "comments_counts_perc.csv").open("w", encoding="utf-8")
 
         # Применяем часовой пояс к периоду
         self.period_begin = self.period_end = self.period_begin.astimezone(stat.tz)
@@ -96,19 +89,18 @@ class CommentsCountsProcessor(BaseProcessor):
         self._fp_sum.write(header_csv)
         self._fp_perc.write(utils.csvline(*header[:-1]))  # В процентах комменты из лички не учитываем
 
-    def process_blog(self, blog: types.Blog) -> None:
+    def process_blog(self, stat: TabunStat, blog: types.Blog) -> None:
         if blog.slug in self._blogs_categories_slug:
             self._blogs_categories[blog.id] = self._blogs_categories_slug[blog.slug]
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         # OLEG778!!!!!!!!
         if comment.id == 2498188:
             return
 
         # Если период закончился, то сохраняем статистику
         while comment.created_at >= self.period_end:
-            self._flush_stat()
+            self._flush_stat(stat)
 
         # Забираем граничные айдишники комментов, чтобы потом по ним угадать
         # общее число комментов
@@ -140,9 +132,7 @@ class CommentsCountsProcessor(BaseProcessor):
         # Пишем статистику в выбранную категорию
         self._stat[category_idx] += 1
 
-    def _flush_stat(self) -> None:
-        assert self.stat
-
+    def _flush_stat(self, stat: TabunStat) -> None:
         # Собираем три разные строки для трёх файлов
         line: list[object] = [self.period_begin.strftime("%Y-%m-%d")]
         line_sum = line[:]
@@ -157,7 +147,7 @@ class CommentsCountsProcessor(BaseProcessor):
         if self._last_comment_id == 0:
             all_count = 0
         if all_count < all_exist_count:
-            self.stat.log(
+            stat.log(
                 0,
                 "WARNING comments_counts: inconsistent comments count:",
                 f"all_count({all_count}) < all_exist_count({all_exist_count})!",
@@ -200,9 +190,9 @@ class CommentsCountsProcessor(BaseProcessor):
         # Теоретически есть шанс попасть в несуществующее или неоднозначное время... но пофиг наверное
         self.period_end = self.period_begin + timedelta(days=self.period)
 
-    def stop(self) -> None:
+    def stop(self, stat: TabunStat) -> None:
         if sum(self._stat) > 0:
-            self._flush_stat()
+            self._flush_stat(stat)
 
         if self._fp is not None:
             self._fp.close()
@@ -213,4 +203,4 @@ class CommentsCountsProcessor(BaseProcessor):
         if self._fp_perc is not None:
             self._fp_perc.close()
             self._fp_perc = None
-        super().stop()
+        super().stop(stat)

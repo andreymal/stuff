@@ -3,6 +3,7 @@ from datetime import datetime
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 @dataclass(slots=True)
@@ -37,12 +38,12 @@ class CharsProcessor(BaseProcessor):
         super().__init__()
         self._chars: dict[str, CharInfo] = {}
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         self._process(post.body, post.created_at)
         for tag in post.tags:
             self._process(tag, post.created_at)
 
-    def process_comment(self, comment: types.Comment) -> None:
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         self._process(comment.body, comment.created_at)
 
     def _process(self, body: str, tm: datetime) -> None:
@@ -54,9 +55,8 @@ class CharsProcessor(BaseProcessor):
             except KeyError:
                 self._chars[c] = CharInfo(count=1, first_seen_at=tm)
 
-    def stop(self) -> None:
-        assert self.stat
-        with (self.stat.destination / "chars.csv").open("w", encoding="utf-8") as fp:
+    def stop(self, stat: TabunStat) -> None:
+        with (stat.destination / "chars.csv").open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline("Символ", "Сколько раз встретился", "Дата первого появления"))
 
             for c, info in sorted(
@@ -69,7 +69,7 @@ class CharsProcessor(BaseProcessor):
                     c = c + " (англ.)"
                 elif not c.strip():
                     c = repr(c)
-                first_seen_at_str = info.first_seen_at.astimezone(self.stat.tz).strftime("%Y-%m-%d %H:%M:%S")
+                first_seen_at_str = info.first_seen_at.astimezone(stat.tz).strftime("%Y-%m-%d %H:%M:%S")
                 fp.write(utils.csvline(c, info.count, first_seen_at_str))
 
-        super().stop()
+        super().stop(stat)

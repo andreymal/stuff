@@ -68,15 +68,8 @@ class OldfagsProcessor(BaseProcessor):
         if self._age_base_date is not None and self._age_base_date.tzinfo is None:
             raise ValueError("age_base_date must be aware datetime")
 
-    def start(
-        self,
-        stat: TabunStat,
-        min_date: datetime | None = None,
-        max_date: datetime | None = None,
-    ) -> None:
-        super().start(stat, min_date, max_date)
-        assert self.stat
-
+    def start(self, stat: TabunStat) -> None:
+        super().start(stat)
         header = ["Месяц"]
         header.extend(self._age_labels)
         header.append(self._label_max)
@@ -91,24 +84,23 @@ class OldfagsProcessor(BaseProcessor):
         self._fp_sum = (stat.destination / f"oldfags{suffix}_sum.csv").open("w", encoding="utf-8")
         self._fp_sum.write(utils.csvline(*header))
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: TabunStat, user: types.User) -> None:
         assert user.registered_at_local is not None
         self._regdates[user.id] = user.registered_at_local
         self._user_ratings[user.id] = user.rating
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         self._put_activity(
+            stat,
             post.author_id,
             post.created_at,
             public=post.blog_status in (0, 2),
         )
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
-
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         if comment.post_id is None or comment.blog_status is None:
             if comment.post_id is None or comment.post_id not in self._warned_posts:
-                self.stat.log(
+                stat.log(
                     0,
                     f"WARNING: oldfags: comment {comment.id} for unknown post {comment.post_id},",
                     "marking as private",
@@ -120,23 +112,22 @@ class OldfagsProcessor(BaseProcessor):
             public = comment.blog_status in (0, 2)
 
         self._put_activity(
+            stat,
             comment.author_id,
             comment.created_at,
             public=public,
         )
 
-    def _put_activity(self, user_id: int, created_at: datetime, *, public: bool) -> None:
-        assert self.stat
-
+    def _put_activity(self, stat: TabunStat, user_id: int, created_at: datetime, *, public: bool) -> None:
         try:
             regdate = self._regdates[user_id].timestamp()
         except KeyError:
-            self.stat.log(0, f"WARNING: oldfags: activity from unknown user {user_id}, skipping")
+            stat.log(0, f"WARNING: oldfags: activity from unknown user {user_id}, skipping")
             return
 
         mon = created_at.date().replace(day=1)
         if mon != self._mon:
-            self._flush_activity(mon)
+            self._flush_activity(stat, mon)
 
         age_base_ts = (self._age_base_date or created_at).timestamp()
         user_age_days = int(age_base_ts - regdate) // 3600 // 24
@@ -155,7 +146,7 @@ class OldfagsProcessor(BaseProcessor):
             self._public_counts[count_idx] += 1
             self._public_counted_users.add(user_id)
 
-    def _flush_activity(self, new_mon: date) -> None:
+    def _flush_activity(self, stat: TabunStat, new_mon: date) -> None:
         assert self._fp is not None
         assert self._fp_sum is not None
         assert new_mon.day == 1
@@ -179,7 +170,7 @@ class OldfagsProcessor(BaseProcessor):
 
             # А также полные списки пользователей для запрошенных месяцев
             if self._mon in self._dump_user_list_for_months:
-                self._dump_users()
+                self._dump_users(stat)
 
             # Проматываем в цикле while до нужного месяца
             # (такой цикл нужен, чтобы не пропустить месяцы без активности
@@ -192,42 +183,40 @@ class OldfagsProcessor(BaseProcessor):
             self._public_counts = [0] * (len(self._age_days) + 1)
             self._public_counted_users.clear()
 
-    def _dump_users(self) -> None:
-        assert self.stat
-
+    def _dump_users(self, stat: TabunStat) -> None:
         if self._mon is None:
             return
 
         filename = f"oldfags_list_{self._mon.year:04d}-{self._mon.month:02d}.csv"
-        with (self.stat.destination / filename).open("w", encoding="utf-8") as fp:
+        with (stat.destination / filename).open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline("ID юзера", "Пользователь", "Дата регистрации", "Рейтинг"))
             for user_id in sorted(self._counted_users, key=lambda u: self._regdates[u]):
                 fp.write(
                     utils.csvline(
                         user_id,
-                        self.stat.source.get_username_by_user_id(user_id),
+                        stat.source.get_username_by_user_id(user_id),
                         self._regdates[user_id],
                         f"{self._user_ratings[user_id]:.02f}",
                     )
                 )
 
         filename = f"oldfags_public_list_{self._mon.year:04d}-{self._mon.month:02d}.csv"
-        with (self.stat.destination / filename).open("w", encoding="utf-8") as fp:
+        with (stat.destination / filename).open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline("ID юзера", "Пользователь", "Дата регистрации", "Рейтинг"))
             for user_id in sorted(self._public_counted_users, key=lambda u: self._regdates[u]):
                 fp.write(
                     utils.csvline(
                         user_id,
-                        self.stat.source.get_username_by_user_id(user_id),
+                        stat.source.get_username_by_user_id(user_id),
                         self._regdates[user_id],
                         f"{self._user_ratings[user_id]:.02f}",
                     )
                 )
 
-    def stop(self) -> None:
+    def stop(self, stat: TabunStat) -> None:
         if self._fp is not None:
             if self._mon is not None:
-                self._flush_activity((self._mon + timedelta(days=32)).replace(day=1))
+                self._flush_activity(stat, (self._mon + timedelta(days=32)).replace(day=1))
             self._fp.close()
             self._fp = None
 
@@ -235,4 +224,4 @@ class OldfagsProcessor(BaseProcessor):
             self._fp_sum.close()
             self._fp_sum = None
 
-        super().stop()
+        super().stop(stat)

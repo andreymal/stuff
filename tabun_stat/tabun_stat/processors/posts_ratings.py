@@ -1,5 +1,6 @@
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 class PostsRatingsProcessor(BaseProcessor):
@@ -9,8 +10,7 @@ class PostsRatingsProcessor(BaseProcessor):
         # {год: {рейтинг: кол-во}}
         self._stat: dict[int, dict[int, int]] = {}
 
-    def process_post(self, post: types.Post) -> None:
-        assert self.stat
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         assert post.created_at_local is not None
 
         vote = post.vote_value
@@ -26,9 +26,7 @@ class PostsRatingsProcessor(BaseProcessor):
             self._stat[year][vote] = 0
         self._stat[year][vote] += 1
 
-    def stop(self) -> None:
-        assert self.stat
-
+    def stop(self, stat: TabunStat) -> None:
         min_rating = 0
         max_rating = 0
         for votes_dict in self._stat.values():
@@ -39,7 +37,7 @@ class PostsRatingsProcessor(BaseProcessor):
         for year in sorted(self._stat):
             header.append(f"{year} год")
 
-        with (self.stat.destination / "posts_ratings.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "posts_ratings.csv").open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline(*header))
             for vote in range(min_rating, max_rating + 1):
                 line = [vote, 0]
@@ -48,4 +46,4 @@ class PostsRatingsProcessor(BaseProcessor):
                     line[1] += line[-1]
                 fp.write(utils.csvline(*line))
 
-        super().stop()
+        super().stop(stat)

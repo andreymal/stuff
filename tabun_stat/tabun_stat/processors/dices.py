@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 
 @dataclass(slots=True)
@@ -17,10 +18,10 @@ class DicesProcessor(BaseProcessor):
         super().__init__()
         self._dices: dict[int, DiceStat] = {}
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         self._process(post.author_id, post.body)
 
-    def process_comment(self, comment: types.Comment) -> None:
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         self._process(comment.author_id, comment.body)
 
     def _process(self, author_id: int, body: str) -> None:
@@ -33,10 +34,8 @@ class DicesProcessor(BaseProcessor):
         self._dices[author_id].publications_count += 1
         self._dices[author_id].dices_count += count
 
-    def stop(self) -> None:
-        assert self.stat
-
-        with (self.stat.destination / "dices.csv").open("w", encoding="utf-8") as fp:
+    def stop(self, stat: TabunStat) -> None:
+        with (stat.destination / "dices.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "ID юзера",
@@ -54,10 +53,10 @@ class DicesProcessor(BaseProcessor):
                 fp.write(
                     utils.csvline(
                         user_id,
-                        self.stat.source.get_username_by_user_id(user_id),
+                        stat.source.get_username_by_user_id(user_id),
                         st.publications_count,
                         st.dices_count,
                     )
                 )
 
-        super().stop()
+        super().stop(stat)

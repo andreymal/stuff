@@ -46,15 +46,8 @@ class ActivityProcessor(BaseProcessor):
         self._user_ratings: dict[int, float] = {}  # {user_id: rating}
         self._last_day: date | None = None
 
-    def start(
-        self,
-        stat: TabunStat,
-        min_date: datetime | None = None,
-        max_date: datetime | None = None,
-    ) -> None:
-        super().start(stat, min_date, max_date)
-        assert self.stat
-
+    def start(self, stat: TabunStat) -> None:
+        super().start(stat)
         header = ["Дата"]
         for period in self.periods:
             if period == 1:
@@ -66,42 +59,37 @@ class ActivityProcessor(BaseProcessor):
             filename = "activity.csv"
             if item.min_rating is not None:
                 filename = f"activity_{item.min_rating:.2f}.csv"
-            item.fp = (self.stat.destination / filename).open("w", encoding="utf-8")
+            item.fp = (stat.destination / filename).open("w", encoding="utf-8")
             item.fp.write(utils.csvline(*header))
 
-    def process_user(self, user: types.User) -> None:
+    def process_user(self, stat: TabunStat, user: types.User) -> None:
         # Собираем рейтинги пользователей
         self._user_ratings[user.id] = user.rating
 
-    def process_post(self, post: types.Post) -> None:
-        assert self.stat
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         assert post.created_at_local is not None
 
         if post.author_id in self._user_ratings:
             rating = self._user_ratings[post.author_id]
         else:
-            self.stat.log(0, f"WARNING: activity: unknown author {post.author_id} of post {post.id}")
+            stat.log(0, f"WARNING: activity: unknown author {post.author_id} of post {post.id}")
             rating = 0.0
 
         self._put_activity(0, post.author_id, post.created_at_local, rating)
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         assert comment.created_at_local is not None
 
         if comment.author_id in self._user_ratings:
             rating = self._user_ratings[comment.author_id]
         else:
-            self.stat.log(0, f"WARNING: activity: unknown author {comment.author_id} of comment {comment.id}")
+            stat.log(0, f"WARNING: activity: unknown author {comment.author_id} of comment {comment.id}")
             rating = 0.0
 
         self._put_activity(1, comment.author_id, comment.created_at_local, rating)
 
     def _put_activity(self, idx: int, user_id: int, created_at_local: datetime, rating: float) -> None:
         # idx: 0 - пост, 1 - коммент
-
-        assert self.stat
-
         day = created_at_local.date()
 
         if self._last_day is None:
@@ -151,9 +139,7 @@ class ActivityProcessor(BaseProcessor):
         assert item.fp is not None
         item.fp.write(utils.csvline(*row))
 
-    def stop(self) -> None:
-        assert self.stat
-
+    def stop(self, stat: TabunStat) -> None:
         for item in self._stats:
             if self._last_day is not None:
                 self._flush_activity(item)
@@ -170,7 +156,7 @@ class ActivityProcessor(BaseProcessor):
                 users_all = len(self._user_ratings)
                 header = "# Статистика пользователей с любым рейтингом\n\n"
 
-            with (self.stat.destination / filename).open("w", encoding="utf-8") as fp:
+            with (stat.destination / filename).open("w", encoding="utf-8") as fp:
                 fp.write(header)
 
                 fp.write(f"Всего юзеров: {users_all}\n")
@@ -192,4 +178,4 @@ class ActivityProcessor(BaseProcessor):
                     f"Юзеров с комментами, но без постов: {len(item.users_with_comments - item.users_with_posts)}\n"
                 )
 
-        super().stop()
+        super().stop(stat)

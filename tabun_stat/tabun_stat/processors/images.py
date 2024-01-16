@@ -4,6 +4,7 @@ from datetime import datetime
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
+from tabun_stat.stat import TabunStat
 
 img_re = re.compile('<img[^>]+src="([^"]+)".*>', flags=re.U | re.I)
 
@@ -53,16 +54,14 @@ class ImagesProcessor(BaseProcessor):
 
         self._warned_posts: set[int] = set()
 
-    def process_post(self, post: types.Post) -> None:
+    def process_post(self, stat: TabunStat, post: types.Post) -> None:
         public = post.blog_status in (0, 2)
         self._process(post.body, public, post.created_at)
 
-    def process_comment(self, comment: types.Comment) -> None:
-        assert self.stat
-
+    def process_comment(self, stat: TabunStat, comment: types.Comment) -> None:
         if comment.post_id is None or comment.blog_status is None:
             if comment.post_id is None or comment.post_id not in self._warned_posts:
-                self.stat.log(
+                stat.log(
                     0,
                     f"WARNING: images: comment {comment.id} for unknown post {comment.post_id},",
                     "marking as private",
@@ -165,10 +164,8 @@ class ImagesProcessor(BaseProcessor):
                 if public:
                     self._hosts2[stat.host2].all_public_count += 1
 
-    def stop(self) -> None:
-        assert self.stat
-
-        with (self.stat.destination / "images.csv").open("w", encoding="utf-8") as fp:
+    def stop(self, stat: TabunStat) -> None:
+        with (stat.destination / "images.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Картинка",
@@ -195,7 +192,7 @@ class ImagesProcessor(BaseProcessor):
                     )
                 )
 
-        with (self.stat.destination / "images_hosts.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "images_hosts.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Хост",
@@ -214,7 +211,7 @@ class ImagesProcessor(BaseProcessor):
                     utils.csvline(h, c.unique_count, c.unique_public_count, c.all_count, c.all_public_count)
                 )
 
-        with (self.stat.destination / "images_hosts2.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "images_hosts2.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Хост",
@@ -235,7 +232,7 @@ class ImagesProcessor(BaseProcessor):
 
         # Дублируем всё то же самое, но без закрытых блогов
 
-        with (self.stat.destination / "images_public.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "images_public.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Картинка", "Первое исп-е на внешке", "Последнее исп-е на внешке", "Сколько раз на внешке"
@@ -255,7 +252,7 @@ class ImagesProcessor(BaseProcessor):
                     )
                 )
 
-        with (self.stat.destination / "images_public_hosts.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "images_public_hosts.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Хост",
@@ -270,7 +267,7 @@ class ImagesProcessor(BaseProcessor):
                     continue
                 fp.write(utils.csvline(h, c.unique_public_count, c.all_public_count))
 
-        with (self.stat.destination / "images_hosts2.csv").open("w", encoding="utf-8") as fp:
+        with (stat.destination / "images_hosts2.csv").open("w", encoding="utf-8") as fp:
             fp.write(
                 utils.csvline(
                     "Хост",
@@ -285,4 +282,4 @@ class ImagesProcessor(BaseProcessor):
                     continue
                 fp.write(utils.csvline(h, c.unique_public_count, c.all_public_count))
 
-        super().stop()
+        super().stop(stat)
