@@ -1,0 +1,12 @@
+[class^="line"] {
+  fill: none;
+  stroke-width: 1px;
+}
+
+[class^="fill"] {
+  stroke: none;
+}
+
+[class^="key"] {
+  stroke: none;
+}

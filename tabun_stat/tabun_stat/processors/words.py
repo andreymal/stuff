@@ -1,31 +1,14 @@
 import array
-import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Iterable
+from typing import IO, Iterable
 
 from tabun_stat import types, utils
-from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
 
-@dataclass
+@dataclass(slots=True)
 class WordStat:
-    __slots__ = (
-        "first_date",
-        "first_public_date",
-        "last_date",
-        "last_public_date",
-        "count",
-        "public_count",
-        "nobots_count",
-        "public_nobots_count",
-        "users",
-        "users_count",
-        "public_users",
-        "public_users_count",
-    )
-
     first_date: datetime
     first_public_date: datetime | None
     last_date: datetime
@@ -64,23 +47,34 @@ class WordStat:
 
 
 class WordsProcessor(BaseProcessor):
-    default_delimeters = ".,?!@'\"«»-—–()*:;#№$%^&[]{}\\/|`~=©®™+©°×⋅…_″′“”"
+    default_delimiters = ".,?!@'\"«»-—–()*:;#№$%^&[]{}\\/|`~=©®™+©°×⋅…_″′“”"
 
     # Так как я решил использовать байтовые строки вместо юникодных, придётся
     # предварительно заменить все юникодные пробельные символы на обычный пробел,
     # чтобы split нормально отработал
-    whitespaces = "\x09\x0a\x0b\x0c\x0d\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+    whitespaces = (
+        "\x09\x0a\x0b\x0c\x0d\x1c\x1d\x1e\x1f\x85\xa0\u1680\u2000\u2001\u2002\u2003"
+        "\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+    )
 
     def __init__(
         self,
+        *,
         bot_ids: Iterable[int] = (),
-        delimeters: str | None = None,
+        delimiters: str | None = None,
+        since: datetime | None = None,
+        user_lists_max_len: int = 20,
     ):
         super().__init__()
         self.bot_ids = tuple(bot_ids)
-        self.delimeters = delimeters or self.default_delimeters
+        self.delimiters = delimiters or self.default_delimiters
+        self.since = since
+        self.user_lists_max_len = user_lists_max_len
 
-        self._trans_table = str.maketrans({x: 32 for x in self.delimeters + self.whitespaces})
+        if since is not None and since.tzinfo is None:
+            raise ValueError("since must be aware datetime")
+
+        self._trans_table = str.maketrans({x: 32 for x in self.delimiters + self.whitespaces})
 
         # Первый элемент — значение в штуках/символах/байтах, второй — количество постов/комментов
         self._post_len_words = [0, 0]
@@ -100,35 +94,65 @@ class WordsProcessor(BaseProcessor):
         self._stat: dict[bytes, dict[bytes, WordStat]] = {}
         self._words_list: list[bytes] = []
 
+        self._warned_posts: set[int] = set()
+
     def process_post(self, post: types.Post) -> None:
         assert post.created_at_local is not None
+        public = post.blog_status in (0, 2)
+        self._process(
+            post.author_id,
+            post.title,
+            post.created_at_local,
+            is_comment=False,
+            is_title=True,
+            is_tag=False,
+            public=public,
+        )
         self._process(
             post.author_id,
             post.body,
             post.created_at_local,
             is_comment=False,
-            blog_status=post.blog_status,
+            is_title=False,
+            is_tag=False,
+            public=public,
         )
+        for tag in post.tags:
+            self._process(
+                post.author_id,
+                tag,
+                post.created_at_local,
+                is_comment=False,
+                is_title=False,
+                is_tag=True,
+                public=public,
+            )
 
     def process_comment(self, comment: types.Comment) -> None:
         assert comment.created_at_local is not None
         assert self.stat
 
-        try:
-            if comment.post_id is None:
-                raise DataNotFound
-            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
-        except DataNotFound:
-            self.stat.log(0, f"WARNING: words: comment {comment.id} for unknown post {comment.post_id}")
-            return
+        if comment.post_id is None or comment.blog_status is None:
+            if comment.post_id is None or comment.post_id not in self._warned_posts:
+                self.stat.log(
+                    0,
+                    f"WARNING: words: comment {comment.id} for unknown post {comment.post_id},",
+                    "marking as private",
+                )
+            if comment.post_id is not None:
+                self._warned_posts.add(comment.post_id)
+            public = False
+        else:
+            public = comment.blog_status in (0, 2)
 
-        blog_status = self.stat.source.get_blog_status_by_id(blog_id)
         self._process(
             comment.author_id,
             comment.body,
             comment.created_at_local,
             is_comment=True,
-            blog_status=blog_status,
+            is_title=False,
+            is_tag=False,
+            public=public,
         )
 
     def _get_word_stat(self, word: bytes) -> WordStat | None:
@@ -151,55 +175,66 @@ class WordsProcessor(BaseProcessor):
         author_id: int,
         raw_body: str,
         created_at_local: datetime,
+        *,
         is_comment: bool,
-        blog_status: int,
+        is_title: bool,
+        is_tag: bool,
+        public: bool,
     ) -> None:
         assert self.stat
 
-        # Фиксим косяк старых версий tbackup
-        if raw_body.startswith("<div ") and raw_body.endswith("</div>"):
-            raw_body = raw_body[raw_body.find(">") + 1 : raw_body.rfind("<")].strip()
+        if not is_title and not is_tag:
+            # Фиксим косяк старых версий tbackup
+            if not raw_body.startswith("<div ") and raw_body.endswith("</div>"):
+                raw_body = raw_body[raw_body.find(">") + 1 : raw_body.rfind("<")].strip()
 
-        body = raw_body.strip()
-        if not body:
-            return
+            body = raw_body.strip()
+            if not body:
+                return
 
-        # Выкидываем HTML-теги
-        while True:
-            f1 = body.find("<")
-            if f1 < 0:
-                break
-            f2 = body.find(">", f1 + 1)
-            if f2 < 0:
-                break
-            body = body[:f1] + " " + body[f2 + 1 :]
+            # Выкидываем HTML-теги
+            while True:
+                f1 = body.find("<")
+                if f1 < 0:
+                    break
+                f2 = body.find(">", f1 + 1)
+                if f2 < 0:
+                    break
+                body = body[:f1] + " " + body[f2 + 1 :]
+
+        else:
+            # Для заголовков и тегов предобработка не нужна
+            body = raw_body
+            if not body:
+                return
 
         # Делим сообщение на слова
         # (хранить в закодированном utf-8 немного экономнее по памяти и чуть быстрее по скорости)
         body = body.translate(self._trans_table)
         words = body.lower().encode("utf-8").split()
 
-        # Считаем статистику публикаций в целом
-        if not is_comment:
-            self._post_len_words[0] += len(words)
-            self._post_len_chars[0] += len(raw_body)
-            self._post_len_bytes[0] += len(raw_body.encode("utf-8"))
-            self._post_len_words[1] += 1
-            self._post_len_chars[1] += 1
-            self._post_len_bytes[1] += 1
-        else:
-            self._comment_len_words[0] += len(words)
-            self._comment_len_chars[0] += len(raw_body)
-            self._comment_len_bytes[0] += len(raw_body.encode("utf-8"))
-            self._comment_len_words[1] += 1
-            self._comment_len_chars[1] += 1
-            self._comment_len_bytes[1] += 1
+        if not is_title and not is_tag:
+            # Считаем статистику публикаций в целом
+            if not is_comment:
+                self._post_len_words[0] += len(words)
+                self._post_len_chars[0] += len(raw_body)
+                self._post_len_bytes[0] += len(raw_body.encode("utf-8"))
+                self._post_len_words[1] += 1
+                self._post_len_chars[1] += 1
+                self._post_len_bytes[1] += 1
+            else:
+                self._comment_len_words[0] += len(words)
+                self._comment_len_chars[0] += len(raw_body)
+                self._comment_len_bytes[0] += len(raw_body.encode("utf-8"))
+                self._comment_len_words[1] += 1
+                self._comment_len_chars[1] += 1
+                self._comment_len_bytes[1] += 1
 
-        if is_comment and not words:
-            self._comments_without_text += 1
+            if is_comment and not words:
+                self._comments_without_text += 1
 
         # Считаем статистику отдельных слов
-        is_bot = author_id in self.bot_ids  # am31, lunabot, ozibot
+        is_bot = author_id in self.bot_ids
         if (
             not is_bot
             and author_id == 36492
@@ -232,9 +267,7 @@ class WordsProcessor(BaseProcessor):
                 )
                 self._put_word_stat(word, ws)
 
-            is_public = blog_status in (0, 2)
-
-            if ws.first_public_date is None and is_public:
+            if ws.first_public_date is None and public:
                 ws.first_public_date = created_at_local
 
             ws.last_date = created_at_local
@@ -243,7 +276,7 @@ class WordsProcessor(BaseProcessor):
                 ws.nobots_count += 1
             ws.put_user(author_id)
 
-            if is_public:
+            if public:
                 ws.last_public_date = created_at_local
                 ws.public_count += 1
                 if not is_bot:
@@ -253,65 +286,81 @@ class WordsProcessor(BaseProcessor):
     def stop(self) -> None:
         assert self.stat
 
-        with open(os.path.join(self.stat.destination, "words.csv"), "w", encoding="utf-8") as fp:
-            fp.write(
-                utils.csvline(
-                    "Слово",
-                    "Первое исп-е",
-                    "Первое исп-е на внешке",
-                    "Последнее исп-е",
-                    "Последнее исп-е на внешке",
-                    "Сколько раз",
-                    "Сколько раз на внешке",
-                    "Сколько раз (без ботов)",
-                    "Сколько раз на внешке (без ботов)",
-                    "Сколько юзеров юзали",
-                    "Кто юзал",
-                    "Сколько юзеров юзали на внешке",
-                    "Кто юзал на внешке",
-                )
-            )
-            for word in self._words_list:
-                data = self._get_word_stat(word)
-                assert data is not None
+        fps: list[tuple[IO[str], datetime | None]] = []
 
-                if data.users_count < 20:
-                    users = [
-                        self.stat.source.get_username_by_user_id(uid)
-                        for user_list in data.users.values()
-                        for uid in user_list
-                    ]
-                else:
-                    users = []
+        try:
+            fps.append(((self.stat.destination / "words.csv").open("w", encoding="utf-8"), None))
+            if self.since is not None:
+                filename = f"words_since_{self.since.strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+                fps.append(((self.stat.destination / filename).open("w", encoding="utf-8"), self.since))
 
-                if data.public_users_count < 20:
-                    public_users = [
-                        self.stat.source.get_username_by_user_id(uid)
-                        for user_list in data.public_users.values()
-                        for uid in user_list
-                    ]
-                else:
-                    public_users = []
-
+            for fp, since in fps:
                 fp.write(
                     utils.csvline(
-                        word.decode("utf-8"),
-                        data.first_date,
-                        data.first_public_date or "",
-                        data.last_date,
-                        data.last_public_date or "",
-                        data.count,
-                        data.public_count,
-                        data.nobots_count,
-                        data.public_nobots_count,
-                        data.users_count,
-                        "; ".join(sorted(users)) if users else "",
-                        data.public_users_count,
-                        "; ".join(sorted(public_users)) if public_users else "",
+                        "Слово",
+                        "Первое исп-е",
+                        "Первое исп-е на внешке",
+                        "Последнее исп-е",
+                        "Последнее исп-е на внешке",
+                        "Сколько раз",
+                        "Сколько раз на внешке",
+                        "Сколько раз (без ботов)",
+                        "Сколько раз на внешке (без ботов)",
+                        "Сколько юзеров юзали",
+                        "Кто юзал",
+                        "Сколько юзеров юзали на внешке",
+                        "Кто юзал на внешке",
                     )
                 )
+                for word in self._words_list:
+                    data = self._get_word_stat(word)
+                    assert data is not None
 
-        with open(os.path.join(self.stat.destination, "avgstats.txt"), "w", encoding="utf-8") as fp:
+                    if since is not None and data.first_date < since:
+                        continue
+
+                    if data.users_count <= self.user_lists_max_len:
+                        users = [
+                            self.stat.source.get_username_by_user_id(uid)
+                            for user_list in data.users.values()
+                            for uid in user_list
+                        ]
+                    else:
+                        users = []
+
+                    if data.public_users_count <= self.user_lists_max_len:
+                        public_users = [
+                            self.stat.source.get_username_by_user_id(uid)
+                            for user_list in data.public_users.values()
+                            for uid in user_list
+                        ]
+                    else:
+                        public_users = []
+
+                    fp.write(
+                        utils.csvline(
+                            word.decode("utf-8"),
+                            data.first_date,
+                            data.first_public_date or "",
+                            data.last_date,
+                            data.last_public_date or "",
+                            data.count,
+                            data.public_count,
+                            data.nobots_count,
+                            data.public_nobots_count,
+                            data.users_count,
+                            "; ".join(sorted(users)) if users else "",
+                            data.public_users_count,
+                            "; ".join(sorted(public_users)) if public_users else "",
+                        )
+                    )
+
+        finally:
+            for fp, _ in fps:
+                fp.close()
+            fps.clear()
+
+        with (self.stat.destination / "avgstats.txt").open("w", encoding="utf-8") as fp:
             fp.write(
                 "Средняя длина поста: {} слов, {} символов, {} байт\n".format(
                     int(self._post_len_words[0] / self._post_len_words[1])

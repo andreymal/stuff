@@ -1,30 +1,24 @@
-# Пример настроек считалки статистики Табуна
+# Настройки считалки статистики Табуна
 
-# Основные настройки
+# Файл, содержащий настройки источника данных
+# (отдельно от остальных настроек, чтобы настройки можно было добавить в git)
+datasource_file = "datasource.toml"
 
-[stat]
 # Каталог, куда складывать статистику
 destination = "./stat"
 
 # Ограничение диапазона времени для постов и комментов. Рекомендуется задать
 # для большей консистентности результата и чтобы всякие OLEG778 не мешались.
-# На юзеров и блоги не влияет.
+# На юзеров влияет только максимальная дата (созданные позже
+# не добавляются в статистику). На блоги не влияет вообще, так как в блоги
+# могут быть перемещены посты, созданные ранее даты создания блога, что
+# могло бы создать проблемы с подсчётом статистики.
 min_date = 2011-08-11T00:00:00+04:00
-max_date = 2021-08-12T00:00:00+03:00
+max_date = 2024-01-01T00:00:00+03:00
 
 # Часовой пояс, который используется некоторыми обработчиками для определения
 # границы суток и для форматирования вывода.
 timezone = "Europe/Moscow"
-
-
-# Параметры источника данных
-
-[datasource]
-# Класс, который будет использоваться для получения данных
-# (двоеточие означает сокращение для tabun_stat.datasource)
-name = ":sqlite3.Sqlite3DataSource"
-# name = "tabun_stat.datasource.sqlite3.Sqlite3DataSource"
-path = "./demo.sqlite3"
 
 
 # Массив обработчиков. Все параметры, кроме name, передаются им
@@ -32,13 +26,15 @@ path = "./demo.sqlite3"
 # (двоеточие означает сокращение для tabun_stat.processors)
 
 
-[[processors]]
 # Считает активность пользователей по дням, опираясь на посты и комменты.
 # Создаёт файлы:
 # - active_users.txt
 # - activity.csv
+# и их аналоги, отфильтрованные по рейтингам пользователей.
+[[processors]]
 name = ":activity.ActivityProcessor"
 # periods = [1, 7, 30]
+# rating_thresholds = [0.0]
 
 
 # Считает число пользоватлей, у которых день рождения в один и тот же день.
@@ -65,6 +61,7 @@ name = ":posts_counts_avg.PostsCountsAvgProcessor"
 # Это может несправедливо занизить статистику, поэтому по умолчанию
 # отключено
 # collect_empty_days = false
+# save_last_months = 2
 
 
 # Аналогично для комментов.
@@ -73,6 +70,7 @@ name = ":posts_counts_avg.PostsCountsAvgProcessor"
 [[processors]]
 name = ":comments_counts_avg.CommentsCountsAvgProcessor"
 # collect_empty_days = false
+# save_last_months = 2
 
 
 # Считает число постов по их рейтингу.
@@ -98,7 +96,9 @@ name = ":dices.DicesProcessor"
 
 # Считает, кто больше всего написал постов и комментов. Считает две статистики
 # с учётом закрытых блога и без учёта, чтобы не сливать инфу из сверхсекретных
-# чат-блогов. Считает как за всё время, так и по годам.
+# чат-блогов. Считает как за всё время, так и по годам. Если указать диапазоны
+# в параметре date_ranges, то дополнительно создаёт статистику для этих
+# диапазонов.
 # Создаёт файлы:
 # - flooders_all.csv
 # - flooders_ГОД.csv
@@ -106,6 +106,12 @@ name = ":dices.DicesProcessor"
 # - flooders_public_ГОД.csv
 [[processors]]
 name = ":flooders.FloodersProcessor"
+date_ranges = [
+    [
+        2021-08-12T00:00:00+03:00,
+        2024-01-01T00:00:00+03:00,
+    ],
+]
 
 
 # Собирает статистику использования картинок. Для ссылок считает две статистики
@@ -116,8 +122,30 @@ name = ":flooders.FloodersProcessor"
 # - images.csv
 # - images_hosts.csv
 # - images_hosts2.csv
+# - images_public.csv
+# - images_public_hosts.csv
+# - images_public_hosts2.csv
 [[processors]]
 name = ":images.ImagesProcessor"
+
+
+# Подсчёт некропостеров. Идея такова: если с момента последней активности
+# в посте прошло много времени, отправивший комментарий пользователь считается
+# некропостером. Помимо количества некропостов, также считается «счёт»:
+# чем больше дней прошло с момента последней активности, тем больший счёт
+# начисляется некропостеру.
+# Создаёт файлы:
+# - necroposters.csv
+# - necroposters_score.csv
+# и их аналоги, отфильтрованные по рейтингам пользователей.
+[[processors]]
+name = ":necroposters.NecropostersProcessor"
+# Мимимальное число дней отсутствия активности, после которого новый коммент
+# будет считаться некропостом
+# min_inactivity_days = 90
+# Считать ли авторов постов некропостерами (по умолчанию нет)
+# authors_are_necroposters = false
+# rating_thresholds = [0.0]
 
 
 # Считает частоту использования первых букв ников.
@@ -127,14 +155,36 @@ name = ":images.ImagesProcessor"
 name = ":nicknames.NicknamesProcessor"
 
 
-# Считает число зарегистрированных пользователей по дням. Также отдельно
-# считает число пользователей с рейтингом больше -20 и с рейтингом больше +20.
+# Считает олдфагов и ньюфагов по месяцам. Активные пользователи группируются
+# возрастам их аккаунтов на момент активности.
+# Создаёт файлы:
+# - oldfags.csv
+# - oldfags_sum.csv
+# - oldfags_public_list_ГГГГ-ММ.csv
+[[processors]]
+name = ":oldfags.OldfagsProcessor"
+dump_user_list_for_months = [2023-12-01]
+
+
+# То же самое, но группировка по возрастам аккаунтов относительно указанной
+# даты.
+# Создаёт файлы:
+# - oldfags_rel_YYYY-MM-DD.csv
+# - oldfags_rel_YYYY-MM-DD_sum.csv
+[[processors]]
+name = ":oldfags.OldfagsProcessor"
+age_base_date = 2024-01-01T00:00:00+03:00
+
+
+# Считает число зарегистрированных пользователей по дням.
 [[processors]]
 name = ":registrations.RegistrationsProcessor"
+# start_date = 2011-08-08
+# rating_thresholds = [-20.0, ...]
 
 
 # Считает число пользователей по их рейтингу. Из-за того, что, в отличие
-# от постов, рейтинг не является целым числом разброс очень большой,
+# от постов, рейтинг не является целым числом и разброс очень большой,
 # группирует рейтинг. Также отдельно считает число пользователей с ровно
 # нулевым рейтингом.
 # Создаёт файлы:
@@ -151,15 +201,21 @@ name = ":users_ratings.UsersRatingsProcessor"
 # без учёта ботов. Для статистики MineOzelot вставлен отдельный игнорирующий
 # костыль.
 #
+# Если указана дата since, то создаёт второй файл, содержащий только слова,
+# впервые появившиеся после указанной даты.
+#
 # Это самый жрущий оперативку обработчик, так как он хранит все слова и всех
 # пользователей в памяти (при обработке всей базы Табуна потребление доходит
-# до 4 гигабайт).
+# до 5 гигабайт).
 #
-# Создаёт файл:
+# Создаёт файлы:
 # - words.csv
+# - words_since_ГГГГ-ММ-ДД_ЧЧ-ММ-СС.csv
 [[processors]]
 name = ":words.WordsProcessor"
 bot_ids = [15404, 35673, 42591]  # am31, lunabot, ozibot
+since = 2021-06-01T00:00:00+03:00
+# user_lists_max_len = 20
 
 
 # Считает статистику по числу постов в разных блогах.
@@ -177,23 +233,26 @@ first_day = 2011-08-08T00:00:00+04:00
 
 categories = [
     # closed,
-    {label = "Ролеплей",             blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
-    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},
-    {label = "Вишневый сад", blogs = ["c-h-e-r-r-y"]},
-    {label = "Другие чат-блоги",     blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
-    {label = "Сервис-зона",          blogs = ["service"]},
-    {label = "ТаБункер",             blogs = ["bunker"]},
-    {label = "Ночные врата",         blogs = ["no_tlen_allowed"]},
-    {label = "МПП",                  blogs = ["lighthouse", "librehouse"]},
-    {label = "Лавочка Дискорда",     blogs = ["ty_nyasha", "nyasha"]},
-    {label = "Маяк",                 blogs = ["Pharos"]},
-    {label = "Полуночники",          blogs = ["Ponyhawks"]},
+    {label = "Стихотворения Синей Зебры", blogs = ["Stihi_Sinej_Zebry"]},
+    {label = "Ролеплей",                  blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
+    # {label = "Посиделки Night Song",      blogs = ["Wir_sind_ein_Team_Irren"]},
+    {label = "Вишневый сад",              blogs = ["c-h-e-r-r-y"]},
+    {label = "Другие чат-блоги",          blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
+    {label = "Сервис-зона",               blogs = ["service"]},
+    {label = "ТаБункер",                  blogs = ["bunker"]},
+    {label = "Ночные врата",              blogs = ["no_tlen_allowed"]},
+    {label = "МПП",                       blogs = ["lighthouse", "librehouse"]},
+    {label = "Лавочка Дискорда",          blogs = ["ty_nyasha", "nyasha"]},
+    {label = "Маяк",                      blogs = ["Pharos"]},
+    {label = "Полуночники",               blogs = ["Ponyhawks"]},
     # personal,
     # open
 ]
 
 
-# Аналогично для комментов.
+# Аналогично для комментов. Есть дополнительный столбец «Всего комментариев
+# согласно их номерам», который учитывает неизвестные комментарии из закрытых
+# блогов и из лички.
 # Создаёт файлы:
 # - comments_counts.csv
 # - comments_counts_sum.csv
@@ -205,18 +264,24 @@ first_day = 2011-08-08T00:00:00+04:00
 
 categories = [
     # closed,
-    {label = "Ролеплей",             blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
-    # {label = "Посиделки Night Song", blogs = ["Wir_sind_ein_Team_Irren"]},
-    {label = "Вишневый сад", blogs = ["c-h-e-r-r-y"]},
-    {label = "Другие чат-блоги",     blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
-    {label = "Сервис-зона",          blogs = ["service"]},
-    {label = "ТаБункер",             blogs = ["bunker"]},
-    {label = "Ночные врата",         blogs = ["no_tlen_allowed"]},
-    {label = "МПП",                  blogs = ["lighthouse", "librehouse"]},
-    {label = "Лавочка Дискорда",     blogs = ["ty_nyasha", "nyasha"]},
-    {label = "Маяк",                 blogs = ["Pharos"]},
-    {label = "Полуночники",          blogs = ["Ponyhawks"]},
+    {label = "Стихотворения Синей Зебры", blogs = ["Stihi_Sinej_Zebry"]},
+    {label = "Ролеплей",                  blogs = ["RPG", "R-P-G", "ugar", "Role_Equestria", "erpg", "outofequestria"]},
+    # {label = "Посиделки Night Song",      blogs = ["Wir_sind_ein_Team_Irren"]},
+    {label = "Вишневый сад",              blogs = ["c-h-e-r-r-y"]},
+    {label = "Другие чат-блоги",          blogs = ["hive", "Wir_sind_ein_Team_Irren", "Blog_of_Good_Ideas_and_Topics", "MPGpeople", "disclub", "popupo", "adekvatnost", "LFL", "ponymanie"]},
+    {label = "Сервис-зона",               blogs = ["service"]},
+    {label = "ТаБункер",                  blogs = ["bunker"]},
+    {label = "Ночные врата",              blogs = ["no_tlen_allowed"]},
+    {label = "МПП",                       blogs = ["lighthouse", "librehouse"]},
+    {label = "Лавочка Дискорда",          blogs = ["ty_nyasha", "nyasha"]},
+    {label = "Маяк",                      blogs = ["Pharos"]},
+    {label = "Полуночники",               blogs = ["Ponyhawks"]},
     # personal,
     # open,
     # all_by_id
 ]
+
+
+# Просто проверяет корректность работы считалки.
+[[processors]]
+name = ":checker.CheckerProcessor"

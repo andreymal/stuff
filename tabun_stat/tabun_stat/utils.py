@@ -1,204 +1,150 @@
 import importlib
+import sys
 import time
-from datetime import datetime, timedelta
-from typing import Any, Generator, Iterable, TypeVar
-
-import pytz
+from datetime import datetime, timedelta, timezone
+from typing import IO, Any, Iterable, TypeVar
 
 T = TypeVar("T")
 
 
-def import_string(s: str) -> Any:
-    if "." not in s:
-        raise ValueError("import_string can import only objects using dot")
+class ProgressDrawer:
+    def __init__(
+        self,
+        target: int,
+        *,
+        w: int = 60,
+        progress_chars: str | None = None,
+        prefix: str = "",
+        postfix: str = "",
+        file: IO[str] | None = None,
+        good_charset: bool | None = None,
+    ):
+        if file is None:
+            file = sys.stderr
 
-    module_name, attr = s.rsplit(".", 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, attr)
+        if good_charset is None:
+            if hasattr(file, "encoding"):
+                good_charset = str(file.encoding or "").lower() in (
+                    "utf-8",
+                    "utf-16",
+                    "utf-16le",
+                    "utf-16be",
+                    "utf-32",
+                )
 
-
-def csvline(
-    *args: Any,
-    end: str = "\n",
-    delimeter: str = ",",
-    quote: str = '"',
-    always_quote: bool = False,
-    slash_escape: bool = False,
-) -> str:
-    """Возвращает строку, пригодную для записи в csv-файл.
-
-    :param args: объекты для записи (будут приведены к строке)
-    :param str end: что дописать в конец строки (по умолчанию перевод строки)
-    :param str delimeter: разделитель объектов (по умолчанию запятая)
-    :param str quote: кавычка, используемая для экранирования
-    :param bool always_quote: оборачивать все объекты в кавычки, даже если
-      нет необходимости
-    :param bool slash_escape: экранировать кавычку слэшем, а не самой кавычкой
-    :rtype: str
-    """
-
-    result: list[str] = []
-
-    for x in args:
-        if result:
-            result.append(delimeter)
-        x = str(x)
-
-        if always_quote or quote in x or "\n" in x:
-            if slash_escape:
-                x = x.replace(quote, "\\" + quote)
+        if not progress_chars:
+            if good_charset:
+                progress_chars = " ▏▎▍▌▋▊▉█"
             else:
-                x = x.replace(quote, quote + quote)
-            x = quote + x + quote
+                progress_chars = " -#"
 
-        result.append(x)
+        self.target = target
+        self.w = max(1, w)
+        self.progress_chars = progress_chars
+        self.prefix = prefix
+        self.postfix = postfix
+        self.file = file
+        self.good_charset = good_charset
+        self.can_flush = hasattr(file, "flush")
+        self.lb = "▕" if good_charset else " ["
+        self.rb = "▏" if good_charset else "] "
 
-    result.append(end)
+        self.current = -1
+        self.last_redraw_at = 0.0
+        self.min_redraw_interval = 0.04  # 25fps
+        self.last_line = ""
+        self._lastlen = 0
 
-    return "".join(result)
+    def update(self, current: int, *, force: bool = False) -> str | None:
+        if not force and current == self.current:
+            return None
+        self.current = current
+        tm = time.monotonic()
 
+        # Если update вызывается слишком часто, то лишних перерисовок не делаем
+        if not force and current != self.target and tm - self.last_redraw_at < self.min_redraw_interval:
+            return None
 
-def progress_drawer(
-    target: int,
-    w: int = 30,
-    progress_chars: str | None = None,
-    lb: str | None = None,
-    rb: str | None = None,
-    humanize: bool = False,
-    show_count: bool = False,
-    fps: float = 25.0,
-    use_unicode: bool = False,
-) -> Generator[str | None, int | None, None]:
-    """Подготавливает всё для рисования полоски прогресса и возвращает
-    сопрограмму, в которую следует передавать текущий прогресс.
+        # Процент, который нужно закрасить на полоске
+        part = (current * 1.0 / self.target) if self.target > 0 else 0.0
+        part = min(max(0.0, part), 1.0)
 
-    Суть такова:
+        # Полоска состоит из трёх частей
+        # [#########-     ]
+        # Решёточки — заполненные блоки, пробелы — пустые,
+        # дефис — частично заполненный блок, позволяющий более точно
+        # отобразить состояние задачи
 
-    1. Вызываем функцию, передавая первым параметром target значение, которое
-       будет считаться за 100%. Полученную сопрограмму сохраняем и запускаем
-       вызовом ``send(None)``.
+        # Число заполненных блоков на полоске
+        full_blocks = int(part * self.w)
+        # Число пустых блоков (минус один частично заполненный)
+        empty_blocks = self.w - full_blocks - 1
+        # Процент частичного заполнения одного частично заполненного блока
+        part_block_position = (part * self.w) - full_blocks
+        # Выбираем номер символа для частично заполненного блока
+        part_block_num = int(part_block_position * (len(self.progress_chars) - 1))
 
-    2. При каждом обновлении передаём текущий прогресс через ``send(N)``.
-       Функция посчитает проценты относительно target и возвратит полоску
-       загрузки с управляющими ASCII-символами, пригодную для печати в stdout
-       (если ранее уже рисовалась, то отрисует поверх старой).
-       Чаще чем ``fps`` кадров в секунду не перерисовывает. Если fps ноль
-       или меньше, то отрисовывает при каждом изменении.
+        # Собираем полоску
+        line_arr = [self.prefix, self.lb]
+        line_arr.append(self.progress_chars[-1] * full_blocks)
+        if full_blocks != self.w:
+            line_arr.append(self.progress_chars[part_block_num])
+        if empty_blocks > 0:
+            line_arr.append(self.progress_chars[0] * empty_blocks)
+        line_arr.extend(
+            (
+                self.rb,
+                f"{part * 100:.1f}% ".rjust(7),
+                f"({current}) ",
+                self.postfix,
+            )
+        )
 
-    3. После завершения передаём прогресс, равный target (что даст 100%),
-       а потом передаём None. Сопрограмма завершит работу и выкинет
-       StopIteration.
+        line = "".join(line_arr)
+        if not force and line == self.last_line:
+            return None
 
-    :param int target: число, которое будет считаться за 100%
-    :param int w: длина полоски в символах (без учёта границы и процентов)
-    :param str progress_chars: символы для рисования прогресса (первый —
-       пустая часть, последний — полная часть, между ними — промежуточные
-       состояния)
-    :param str lb: левая граница полоски
-    :param str rb: правая граница полоски
-    :param bool humanize: при True выводит текущее значение в кибибайтах
-       (делённое на 1024), при False как есть
-    :param bool show_count: при True печатает также target
-    :param float fps: максимально допустимая частота кадров. Работает так:
-       если между двумя send частота получается больше чем fps, то один кадр
-       не рисуется и пропускается, однако 100% для красоты никогда
-       не пропускается
-    :param bool use_unicode: использовать ли юникод на полную катушку
-    """
+        # И печатаем
+        self._lastlen = self.fprint_substring(line, self._lastlen)
+        self.last_line = line
+        self.current = current
+        self.last_redraw_at = tm
+        return line
 
-    # Выбираем, какими символами будем рисовать полоску
-    if not progress_chars:
-        if use_unicode:
-            progress_chars = " ▏▎▍▌▋▊▉█"
-        else:
-            progress_chars = " -#"
-    if lb is None:
-        lb = "▕" if use_unicode else " ["
-    if rb is None:
-        rb = "▏" if use_unicode else "] "
+    def add_progress(self, value: int, *, force: bool = False) -> str | None:
+        return self.update(self.current + value, force=force)
 
-    min_period = 0.0
-    if fps > 0.0:
-        min_period = 1.0 / fps  # для 25 fps это 0.04
+    def fprint_substring(self, s: str, l: int = 0) -> int:
+        return fprint_substring(s, l=l, file=self.file, flush=self.can_flush)
 
-    current: int | None = 0
-    old_current: int | None = None
-    old_line = ""
-
-    tm = 0.0
-    lastlen = 0
-
-    while current is not None:
-        text_for_print: str | None = None
-
-        # Умная математика, сколько каких блоков выводить
-        part = (current * 1.0 / target) if target > 0 else 1.0
-        if part < 0.0:
-            part = 0.0
-        elif part > 1.0:
-            part = 1.0
-
-        full_blocks = int(part * w)
-        empty_blocks = w - full_blocks - 1
-        part_block_position = (part * w) - full_blocks
-        part_block_num = int(part_block_position * (len(progress_chars) - 1))
-
-        # Готовим строку с числовой информацией о прогрессе, чтобы вывести после полоски
-        if show_count:
-            if humanize:
-                cnt_string = "({}K/{}K) ".format(int(current / 1024.0), int(target / 1024.0))
-            else:
-                cnt_string = "({}/{}) ".format(current, target)
-        else:
-            if humanize:
-                cnt_string = "({}K) ".format(int(current / 1024.0))
-            else:
-                cnt_string = "({}) ".format(current)
-
-        # Обновляем полоску:
-        # - только когда значение новое
-        # - не чаще 25 кадров в секунду, но только если текущее значение
-        #   не совпадает с 100% (чтобы последний кадр гарантированно
-        #   отрисовался)
-        if current != old_current and (current == target or not min_period or time.time() - tm >= min_period):
-            old_current = current
-
-            # Собираем всю полоску
-            line = lb
-            line += progress_chars[-1] * full_blocks
-            if full_blocks != w:
-                line += progress_chars[part_block_num]
-            line += progress_chars[0] * empty_blocks
-            line += rb
-            line += "{:.1f}% ".format(int(part * 1000) / 10.0).rjust(7)
-            line += cnt_string
-
-            # Печатаем её (только если полоска вообще изменилась)
-            if line != old_line:
-                old_line = line
-                text_for_print = fprint_substring(line, lastlen)
-                lastlen = len(line)
-
-                # Запоминаем время печати для ограничения кадров в секунду
-                if min_period:
-                    tm = time.time()
-
-        current = yield text_for_print
+    def set_target(self, target: int, *, update: bool = True) -> None:
+        self.target = int(target)
+        if update:
+            self.update(self.current, force=True)
 
 
-def fprint_substring(s: str, l: int = 0) -> str:
-    """Возвращает строку, пригодную для печати с затиранием последних
-    l символов.
-    """
+def fprint_substring(s: str, l: int = 0, file: IO[str] | None = None, flush: bool | None = None) -> int:
+    """Печатает строку, затирая последние l символов. Возвращает длину печатаемой строки."""
 
-    result: list[str] = []
+    if file is None:
+        file = sys.stderr
+    if flush is None:
+        flush = hasattr(file, "flush")
+
+    x = []
     if l > 0:
-        result.append("\b" * l)
-    result.append(s)
+        x.append("\b" * l)
+
+    x.append(s)
+
     if len(s) < l:
-        result.append(" " * (l - len(s)))
-        result.append("\b" * (l - len(s)))
-    return "".join(result)
+        x.append(" " * (l - len(s)))
+        x.append("\b" * (l - len(s)))
+
+    file.write("".join(x))
+    if flush:
+        file.flush()
+    return len(s)
 
 
 def format_timedelta(tm: int | float | timedelta) -> str:
@@ -222,94 +168,79 @@ def format_timedelta(tm: int | float | timedelta) -> str:
     return s
 
 
-def apply_tzinfo(tm: datetime, tzinfo: str | pytz.BaseTzInfo | None = None) -> datetime:
-    """Применяет часовой пояс ко времени, перематывая время на нужное число
-    часов/минут.
+def import_string(s: str) -> object:
+    if "." not in s:
+        raise ValueError("import_string can import only objects using dot")
 
-    Если у переданного в функцию времени нет часового пояса, он считается UTC.
-    Аргумент tzinfo может быть строкой с названием часового пояса;
-    None считается за UTC.
+    module_name, attr = s.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, attr)
+
+
+def csvline(
+    *args: object,
+    end: str = "\n",
+    delimiter: str = ",",
+    quote: str = '"',
+    always_quote: bool = False,
+    slash_escape: bool = False,
+) -> str:
+    """Возвращает строку, пригодную для записи в csv-файл.
+
+    :param args: объекты для записи (будут приведены к строке)
+    :param end: что дописать в конец строки (по умолчанию перевод строки)
+    :param delimeter: разделитель объектов (по умолчанию запятая)
+    :param quote: кавычка, используемая для экранирования
+    :param always_quote: оборачивать все объекты в кавычки, даже если
+      нет необходимости
+    :param slash_escape: экранировать кавычку слэшем, а не самой кавычкой
     """
 
-    if tzinfo and isinstance(tzinfo, str):
-        tzinfo = pytz.timezone(tzinfo)
+    result: list[str] = []
 
-    if not tzinfo:
-        tzinfo = pytz.timezone("UTC")
-    assert isinstance(tzinfo, pytz.BaseTzInfo)
+    for x in args:
+        if result:
+            result.append(delimiter)
+        x = str(x)
 
-    if not tm.tzinfo:
-        tm = tzinfo.fromutc(tm)
-    elif tm.tzinfo != tzinfo:
-        tm = tzinfo.normalize(tm)
-    return tm
+        if always_quote or quote in x or "\n" in x:
+            if slash_escape:
+                x = x.replace(quote, "\\" + quote)
+            else:
+                x = x.replace(quote, quote + quote)
+            x = quote + x + quote
+
+        result.append(x)
+
+    result.append(end)
+
+    return "".join(result)
 
 
 def force_utc(tm: datetime) -> datetime:
-    return apply_tzinfo(tm, pytz.timezone("UTC"))
+    if tm.tzinfo is None:
+        raise ValueError("datetime object must be aware")
+    return tm.astimezone(timezone.utc)
 
 
-def set_tzinfo(tm: datetime, tzinfo: str | pytz.BaseTzInfo | None = None, is_dst: bool = False) -> datetime:
-    """Прикрепляет часовой пояс к объекту datetime, который без пояса.
-    Возвращает объект datetime с прикреплённым часовым поясом, но значение
-    (в частности, день и час), остаются теми же, что и были.
-    Для конвертирования времени в нужный часовой пояс см. apply_tzinfo.
-    Аргумент tzinfo может быть строкой с названием часового пояса;
-    None считется за UTC.
-
-    :param datetime tm: время (без часового пояса)
-    :param tzinfo: часовой пояс, который надо прикрепить
-    :param bool is_dst: в случае неоднозначностей (например,
-      31 октября 2010-го 02:00 - 02:59 по Москве) указывает, считать это время
-      летним (True) или зимним (False)
-    :rtype: datetime
-    """
-
-    if tm.tzinfo:
-        raise ValueError("datetime already has tzinfo")
-
-    if tzinfo and isinstance(tzinfo, str):
-        tzinfo = pytz.timezone(tzinfo)
-
-    if not tzinfo:
-        tzinfo = pytz.timezone("UTC")
-    assert isinstance(tzinfo, pytz.BaseTzInfo)
-
-    return tzinfo.localize(tm, is_dst=is_dst)
+def filter_split(f: str) -> tuple[str, str]:
+    """Разделяет фильтр на название поля и операцию."""
+    if "__" in f:
+        return tuple(f.split("__", 1))  # type: ignore
+    raise ValueError(f"Invalid filter: {f!r}")
 
 
-def append_days(tm: datetime, days: int) -> datetime:
-    # Функция возможно будет баговать на некоторых особо хитрых часовых поясах,
-    # но и так сойдёт, для Europe/Moscow работает и норм
-
-    if not tm.tzinfo:
-        return tm + timedelta(days=days)
-
-    if not isinstance(tm.tzinfo, pytz.BaseTzInfo):
-        raise ValueError("Expected pytz tzinfo")
-
-    # Добавляем days*24 часов пока без учёта пояса
-    tomorrow = tm + timedelta(days=days)
-    # Нормализуем (час может измениться!)
-    tomorrow = tm.tzinfo.normalize(tomorrow)
-    # Выясняем, попадаются ли 25 часов в сутках между старой и новой датой
-    tomorrow_utcoffset = tomorrow.utcoffset()
-    tm_utcoffset = tm.utcoffset()
-    assert tomorrow_utcoffset is not None
-    assert tm_utcoffset is not None  # mypy hints
-    diff = tomorrow_utcoffset - tm_utcoffset
-    # Если есть, то компенсируем
-    if diff:
-        tomorrow -= diff
-
-    assert tomorrow.hour == tm.hour
-    assert tomorrow.minute == tm.minute
-    return tomorrow
-
-    # тест:
-    # d = pytz.timezone('Europe/Moscow').localize(datetime(2014, 10, 26, 0, 0, 0))
-    # d  # => 2014-10-26 00:00:00+04:00
-    # append_days(d, 1)  # => 2014-10-27 00:00:00+03:00
+def filter_act(act: str, left: Any, right: Any) -> bool:
+    """Применяет операцию (lt/lte/gt/gte) к указанным значениям."""
+    if act == "lt":
+        return bool(left < right)
+    if act == "lte":
+        return bool(left <= right)
+    if act == "gt":
+        return bool(left > right)
+    if act == "gte":
+        return bool(left >= right)
+    raise ValueError(f"Invalid act: {act!r}")
 
 
 def drop_duplicates(items: Iterable[T]) -> list[T]:

@@ -1,19 +1,19 @@
-import os
 from datetime import datetime
 
 from tabun_stat import types, utils
-from tabun_stat.datasource.base import DataNotFound
 from tabun_stat.processors.base import BaseProcessor
 
 
 class FloodersProcessor(BaseProcessor):
     def __init__(
         self,
+        *,
         date_ranges: list[tuple[datetime, datetime]] | None = None,
     ):
         super().__init__()
 
         # Здесь статистика по годам
+        # {год: {пользователь: количество}}
 
         # С закрытыми блогами
         self._flooders_all_posts: dict[int, dict[int, int]] = {}
@@ -24,9 +24,16 @@ class FloodersProcessor(BaseProcessor):
         self._flooders_public_comments: dict[int, dict[int, int]] = {}
 
         # Здесь статистика по указанным в конфиге диапазонам дат
-        self._date_ranges: list[tuple[datetime, datetime]] = date_ranges or []
+        # (из TOML могут прилететь списки вместо кортежей, поэтому конвертируем)
+        self._date_ranges = []
+        if date_ranges is not None:
+            for dt_from, dt_to in date_ranges:
+                if dt_from.tzinfo is None or dt_to.tzinfo is None:
+                    raise ValueError("date_ranges list item must be aware datetime")
+                self._date_ranges.append((dt_from, dt_to))
 
         # Число в ключах словаря — индекс диапазона в списке date_ranges
+        # {диапазон: {пользователь: количество}}
         self._flooders_all_posts_ranges: dict[int, dict[int, int]] = {}
         self._flooders_all_comments_ranges: dict[int, dict[int, int]] = {}
 
@@ -75,11 +82,13 @@ class FloodersProcessor(BaseProcessor):
         assert post.created_at_local is not None
 
         self._put(
-            self._flooders_all_posts, self._flooders_all_posts_ranges, post.created_at_local, post.author_id
+            self._flooders_all_posts,
+            self._flooders_all_posts_ranges,
+            post.created_at_local,
+            post.author_id,
         )
 
-        blog_status = post.blog_status
-        if blog_status in (0, 2):
+        if post.blog_status in (0, 2):
             self._put(
                 self._flooders_public_posts,
                 self._flooders_public_posts_ranges,
@@ -91,14 +100,6 @@ class FloodersProcessor(BaseProcessor):
         assert self.stat
         assert comment.created_at_local is not None
 
-        try:
-            if comment.post_id is None:
-                raise DataNotFound
-            blog_id = self.stat.source.get_blog_id_of_post(comment.post_id)
-        except DataNotFound:
-            self.stat.log(0, f"WARNING: flooders: comment {comment.id} for unknown post {comment.post_id}")
-            return
-
         self._put(
             self._flooders_all_comments,
             self._flooders_all_comments_ranges,
@@ -106,8 +107,7 @@ class FloodersProcessor(BaseProcessor):
             comment.author_id,
         )
 
-        blog_status = self.stat.source.get_blog_status_by_id(blog_id)
-        if blog_status in (0, 2):
+        if comment.blog_status in (0, 2):
             self._put(
                 self._flooders_public_comments,
                 self._flooders_public_comments_ranges,
@@ -186,9 +186,10 @@ class FloodersProcessor(BaseProcessor):
                 stat[user_id] = [0, 0]
             stat[user_id][1] = count
 
+        # Сортируем юзеров по общему числу постов и комментов в сумме
         items = sorted(stat.items(), key=lambda x: x[1][0] + x[1][1], reverse=True)
 
-        with open(os.path.join(self.stat.destination, filename), "w", encoding="utf-8") as fp:
+        with (self.stat.destination / filename).open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline("ID юзера", "Пользователь", "Сколько постов", "Сколько комментов"))
 
             for user_id, (posts_count, comments_count) in items:

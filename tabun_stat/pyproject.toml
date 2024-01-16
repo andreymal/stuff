@@ -1,0 +1,82 @@
+[project]
+name = "tabun_stat"
+version = "0.0.2"
+description = "Statistics calculator for Tabun"
+license = {text = "MIT License"}
+authors = [
+    {name = "andreymal"},
+]
+requires-python = ">= 3.10"
+dependencies = [
+    "tomli; python_version < '3.11'",
+    "tzdata; platform_system=='Windows'",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build",
+]
+graph = [
+    "cssutils",
+    "lxml",
+    "svg.charts == 7.3.0",
+]
+
+[project.scripts]
+tabun_stat = "tabun_stat.main:main"
+tabun_stat_graph = "tabun_stat.graph.main:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tabun_stat", "tabun_stat.*"]
+
+[tool.black]
+line-length = 110
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 110
+multi_line_output = 3
+
+[tool.mypy]
+strict = true
+files = ["tabun_stat"]
+
+[tool.pylint.main]
+jobs = 0
+
+[tool.pylint."MESSAGES CONTROL"]
+extension-pkg-whitelist = ["lxml"]
+disable = [
+    "consider-using-f-string",
+    "duplicate-code",
+    "invalid-name",
+    "line-too-long",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "too-many-ancestors",
+    "too-few-public-methods",
+    "too-many-public-methods",
+    "too-many-arguments",
+    "too-many-branches",
+    "too-many-instance-attributes",
+    "too-many-locals",
+    "too-many-statements",
+]

@@ -1,5 +1,3 @@
-import os
-
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
 
@@ -7,6 +5,8 @@ from tabun_stat.processors.base import BaseProcessor
 class CommentsRatingsProcessor(BaseProcessor):
     def __init__(self) -> None:
         super().__init__()
+
+        # {год: {рейтинг: кол-во}}
         self._stat: dict[int, dict[int, int]] = {}
 
     def process_comment(self, comment: types.Comment) -> None:
@@ -37,7 +37,7 @@ class CommentsRatingsProcessor(BaseProcessor):
         for year in sorted(self._stat):
             header.append(f"{year} год")
 
-        with open(os.path.join(self.stat.destination, "comments_ratings.csv"), "w", encoding="utf-8") as fp:
+        with (self.stat.destination / "comments_ratings.csv").open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline(*header))
             for vote in range(min_rating, max_rating + 1):
                 line = [vote, 0]

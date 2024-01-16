@@ -19,5 +19,5 @@ dist/
 
 # tabun_stat stuff
 /stat
-/config.toml
+/datasource.toml
 /demo.sqlite3

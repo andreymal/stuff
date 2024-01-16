@@ -1,5 +1,7 @@
+include config.toml
+include datasource.example.toml
+include demo.sql
+include graph_config.toml
 include Makefile
-include *.md
-include *requirements.txt
-recursive-exclude * __pycache__
-recursive-exclude * *.py[co]
+recursive-include tabun_stat *
+global-exclude *.py[cod]

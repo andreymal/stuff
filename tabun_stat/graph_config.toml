@@ -1,0 +1,248 @@
+source = "stat"
+destination = "graphs"
+
+
+# Кто сколько напостил и накомментил
+
+
+[[graph]]
+graph_name = "posts_counts_sum"
+
+renderer = ":render_plot"
+source = "posts_counts_sum.csv"
+destination = "posts_counts_sum.svg"
+width = 6000
+height = 950
+
+graph_title = "Кто сколько напостил"
+
+x_title = "Первый день недели"
+scale_x_divisions = 4
+x_extra_guidelines = 3
+rotate_x_labels = true
+x_are_strings = true
+
+y_title = "Число постов в неделю"
+y_format = "{:0.0f}"
+scale_y_divisions = 50.0
+y_extra_guidelines = 4
+y_axis_right = true
+
+legend_ingraph_position = 0.0
+reverse = true
+area_fill = true
+
+[graph.data_colors]
+"Закрытые блоги" = "#000"
+"Стихотворения Синей Зебры" = "#f461af"
+"Ролеплей" = "#808000"
+"Вишневый сад" = "#008080"
+"Другие чат-блоги" = "#0f0"
+"Сервис-зона" = "#f00"
+"ТаБункер" = "#008000"
+"Ночные врата" = "#ffb2c8"
+"МПП" = "#00f"
+"Лавочка Дискорда" = "#0ff"
+"Маяк" = "#f0f"
+"Полуночники" = "#ff0"
+"Полузакрытые" = "#a0a0a0"
+"Личные блоги" = "#800080"
+"Открытые" = "rgba(0, 0, 160, 0.5)"
+"Всего комментариев согласно их номерам" = "rgba(128, 128, 128, 0.25)"
+
+[graph.data_dasharrays]
+"Всего комментариев согласно их номерам" = "4,4"
+
+
+[[graph]]
+graph_name = "posts_counts_sum_last"
+graph_base = "posts_counts_sum"
+
+destination = "posts_counts_sum_last.svg"
+width = 2000
+height = 950
+
+x_min = "2020-12-28"
+
+scale_y_divisions = 10.0
+y_extra_guidelines = 1
+
+
+[[graph]]
+graph_name = "comments_counts_sum"
+graph_base = "posts_counts_sum"
+
+source = "comments_counts_sum.csv"
+destination = "comments_counts_sum.svg"
+
+graph_title = "Кто сколько накомментил"
+
+y_title = "Число комментов в неделю"
+scale_y_divisions = 5000.0
+y_extra_guidelines = 4
+
+
+[[graph]]
+graph_name = "comments_counts_sum_last"
+graph_base = "comments_counts_sum"
+
+destination = "comments_counts_sum_last.svg"
+width = 2000
+height = 950
+
+x_min = "2020-12-28"
+
+scale_y_divisions = 1000.0
+y_extra_guidelines = 4
+
+
+# Число активных пользователей
+
+
+[[graph]]
+graph_name = "activity"
+
+renderer = ":render_plot"
+source = "activity.csv"
+destination = "activity.svg"
+width = 3840
+height = 1080
+
+graph_title = "Число активных пользователей (с любым рейтингом, посчитано по созданным постам и комментариям)"
+
+x_title = "Дата"
+scale_x_divisions = 56
+x_extra_guidelines = 3
+rotate_x_labels = true
+x_are_strings = true
+
+y_title = "Число пользователей, проявивших активность в указанный период до этой даты"
+y_format = "{:0.0f}"
+y_max = 2500.0
+scale_y_divisions = 100.0
+y_extra_guidelines = 3
+y_axis_right = true
+
+legend_ingraph_position = 0.0
+
+
+[[graph]]
+graph_name = "activity_0.00"
+graph_base = "activity"
+
+source = "activity_0.00.csv"
+destination = "activity_0.00.svg"
+
+graph_title = "Число активных пользователей (с рейтингом 0 или больше, посчитано по созданным постам и комментариям)"
+
+
+# Число олдфагов и ньюфагов
+
+
+[[graph]]
+graph_name = "oldfags_sum"
+renderer = ":render_plot"
+source = "oldfags_sum.csv"
+destination = "oldfags.svg"
+width = 1920
+height = 1080
+
+graph_title = "Число активных пользователей, сгруппированных по возрасту аккаунта"
+
+x_title = "Месяц"
+scale_x_divisions = 2
+x_extra_guidelines = 1
+rotate_x_labels = true
+x_are_strings = true
+
+y_title = "Число аккаунтов, имеющих такой возраст на момент первой активности в месяце"
+y_format = "{:0.0f}"
+scale_y_divisions = 100.0
+y_extra_guidelines = 1
+y_axis_right = true
+reverse = true
+
+area_fill = true
+legend_ingraph_position = 1.0
+
+colors = [
+    "#b70e16",
+    "#ff1c21",
+    "#ff6b21",
+    "#ffd800",
+    "#ff0",
+    "#eaf850",
+    "#8efb02",
+    "#26e000",
+    "#22be02",
+    "#00cdf5",
+    "#0099f6",
+    "#0035ef",
+    "#75009f",
+    "#d10382",
+    "#fe3980",
+    "#a27",
+]
+
+
+[[graph]]
+graph_name = "oldfags_sum_rel"
+graph_base = "oldfags_sum"
+
+source = "oldfags_rel_2024-01-01_sum.csv"
+destination = "oldfags_rel_2024-01-01.svg"
+
+graph_title = "Число активных пользователей, сгруппированных по текущему возрасту аккаунта"
+y_title = "Число аккаунтов, имеющих такой возраст на момент 1 января 2024 года"
+
+
+[[graph]]
+graph_name = "oldfags_sum_since_2020-01"
+graph_base = "oldfags_sum"
+destination = "oldfags_since_2020-01.svg"
+x_min = "2020-01"
+scale_x_divisions = 1
+x_extra_guidelines = 0
+scale_y_divisions = 10
+y_extra_guidelines = 0
+
+
+[[graph]]
+graph_name = "oldfags_sum_rel_since_2020-01"
+graph_base = "oldfags_sum_rel"
+destination = "oldfags_rel_2024-01-01_since_2020-01.svg"
+x_min = "2020-01"
+scale_x_divisions = 1
+x_extra_guidelines = 0
+scale_y_divisions = 10
+y_extra_guidelines = 0
+
+
+# Число аккаунтов
+
+
+[[graph]]
+graph_name = "registrations"
+renderer = ":render_plot"
+source = "registrations.csv"
+destination = "registrations.svg"
+width = 1920
+height = 1080
+
+graph_title = "Число зарегистрированных пользователей"
+
+x_title = "Дата"
+scale_x_divisions = 56
+x_extra_guidelines = 3
+rotate_x_labels = true
+x_are_strings = true
+
+y_title = "Число пользователей"
+y_format = "{:0.0f}"
+scale_y_divisions = 2000.0
+y_extra_guidelines = 1
+y_axis_right = true
+
+skip_columns = ["Новые пользователи"]
+
+legend_ingraph_position = 0.0

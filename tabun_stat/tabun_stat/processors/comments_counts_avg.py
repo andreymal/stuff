@@ -1,6 +1,4 @@
-import os
 from datetime import date, timedelta
-from typing import Any
 
 from tabun_stat import types, utils
 from tabun_stat.processors.base import BaseProcessor
@@ -9,15 +7,21 @@ from tabun_stat.processors.base import BaseProcessor
 class CommentsCountsAvgProcessor(BaseProcessor):
     def __init__(
         self,
+        *,
         collect_empty_days: bool = False,
+        save_last_months: int = 2,
     ):
         super().__init__()
 
         self.collect_empty_days = collect_empty_days
+        self.save_last_months = save_last_months
 
-        self._last_day = date(1970, 1, 1)
+        self._last_day: date | None = None
 
+        # Число комментов в месяце во часам
         self._counts: dict[tuple[int, int], list[int]] = {}
+
+        # Число дней в месяце, учтённых в статистике
         self._days: dict[tuple[int, int], int] = {}
 
     def process_comment(self, comment: types.Comment) -> None:
@@ -28,7 +32,7 @@ class CommentsCountsAvgProcessor(BaseProcessor):
 
         # Если это самый первый коммент, поступивший на обработку, то
         # инициализиуем всю статистику
-        if self._last_day.year == 1970:
+        if self._last_day is None:
             self._last_day = day
             self._counts = {(day.year, day.month): [0] * 24}
             self._days = {(day.year, day.month): 1}
@@ -77,22 +81,20 @@ class CommentsCountsAvgProcessor(BaseProcessor):
                 counts_all[hour] += cnt
                 counts_year[year][hour] += cnt
 
-        last_months = sorted(self._counts)[-2:]
+        last_months = sorted(self._counts)[-self.save_last_months :]
 
         # Собираем CSV-заголовок
-        header = [f"Час ({str(self.stat.timezone)})", "За всё время"]
+        header = [f"Час ({str(self.stat.tz)})", "За всё время"]
         for year in sorted(counts_year):
             header.append(f"{year} год")
         for mon in last_months:
             header.append(f"{mon[0]:04d}-{mon[1]:02d}")
 
-        with open(
-            os.path.join(self.stat.destination, "comments_counts_avg.csv"), "w", encoding="utf-8"
-        ) as fp:
+        with (self.stat.destination / "comments_counts_avg.csv").open("w", encoding="utf-8") as fp:
             fp.write(utils.csvline(*header))
 
             for hour in range(24):
-                line: list[Any] = [hour]
+                line: list[object] = [hour]
 
                 # За всё время
                 line.append("{:.2f}".format(counts_all[hour] / (days_all or 1)))

@@ -1,0 +1,82 @@
+.mainTitle,
+.subTitle,
+.xAxisLabels,
+.yAxisLabels,
+.xAxisTitle,
+.yAxisTitle,
+.dataPointLabel,
+.keyText {
+  font-family: Ubuntu, Tahoma, Verdana, Arial, Helvetica, sans-serif;
+}
+
+.svgBackground {
+  fill: white;
+}
+
+.graphBackground {
+  fill: white;
+}
+
+.mainTitle {
+  text-anchor: middle;
+  fill: black;
+  font-size: %(title_font_size)dpx;
+}
+
+.subTitle {
+  text-anchor: middle;
+  fill: #999;
+  font-size: %(subtitle_font_size)dpx;
+}
+
+.axis {
+  stroke: black;
+  stroke-width: 1px;
+}
+
+.guideLines {
+  stroke: rgba(0, 0, 255, 0.19);
+  stroke-width: 1px;
+}
+
+.guideLinesExtra {
+  stroke: rgba(0, 0, 0, 0.14);
+  stroke-width: 1px;
+  stroke-dasharray: 1,2;
+}
+
+.xAxisLabels {
+  text-anchor: middle;
+  fill: black;
+  font-size: %(x_label_font_size)dpx;
+}
+
+.yAxisLabels {
+  text-anchor: end;
+  fill: black;
+  font-size: %(y_label_font_size)dpx;
+}
+
+.xAxisTitle {
+  text-anchor: middle;
+  fill: black;
+  font-size: %(x_title_font_size)dpx;
+}
+
+.yAxisTitle {
+  fill: black;
+  text-anchor: middle;
+  font-size: %(y_title_font_size)dpx;
+}
+
+.keyText {
+  fill: black;
+  text-anchor: start;
+  font-size: %(key_font_size)dpx;
+}
+
+.legendBackground {
+  fill: rgba(255, 255, 255, 0.5);
+  stroke: black;
+  stroke-width: 1px;
+}

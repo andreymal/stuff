@@ -30,12 +30,11 @@ clean-pyc:
 	$(FIND) . -name '__pycache__' -exec rm -fr {} +
 
 dist: clean
-	$(PYTHON) setup.py sdist
-	$(PYTHON) setup.py bdist_wheel
+	$(PYTHON) -m build --no-isolation
 	ls -lh dist
 
 install: clean
-	$(PYTHON) setup.py install
+	$(PIP) install .
 
 develop:
-	$(PIP) install --upgrade --upgrade-strategy eager -e .
+	$(PIP) install --upgrade --upgrade-strategy eager -e ".[dev,graph]"
